@@ -108,7 +108,7 @@
               }
             },
             "size": {
-              "value": 476740321280,
+              "value": 476739272704,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -143,7 +143,7 @@
               }
             },
             "size": {
-              "value": 1099510579200,
+              "value": 1099509530624,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -178,7 +178,7 @@
               }
             },
             "size": {
-              "value": 1099510579200,
+              "value": 1099509530624,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -213,7 +213,7 @@
               "name": "root",
               "fs_type": "xfs",
               "length": {
-                "value": 2675736313856,
+                "value": 2675733168128,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,

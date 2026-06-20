@@ -43,6 +43,12 @@ const (
 	mib = uint64(1) << 20
 	// startOffset is the first usable byte; 1 MiB is the conventional alignment.
 	startOffset = mib
+	// endReserve is shaved off the end of every disk for the secondary (backup)
+	// GPT header, which lives in the last ~33 sectors. Without it the last
+	// partition on a disk runs to the device end and overlaps the backup GPT, and
+	// archinstall rejects the layout ("Partition overlaps backup GPT header").
+	// 1 MiB comfortably covers the backup GPT and keeps MiB alignment.
+	endReserve = mib
 	// vgHeadroomPerPV is shaved off each PV when sizing the root LV, to stay
 	// safely under the volume group's free extents (LVM metadata + alignment).
 	// A few MiB lost across a multi-disk array is irrelevant.
@@ -204,7 +210,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	if !ok || disk1Total == 0 {
 		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
 	}
-	used := startOffset + espBytes + swapBytes
+	used := startOffset + espBytes + swapBytes + endReserve
 	if disk1Total <= used {
 		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
 	}
@@ -242,10 +248,10 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		if !ok || total == 0 {
 			return nil, nil, fmt.Errorf("no geometry for PV disk %s", dev)
 		}
-		if total <= startOffset {
+		if total <= startOffset+endReserve {
 			return nil, nil, fmt.Errorf("PV disk %s (%d bytes) too small", dev, total)
 		}
-		size := roundDownMiB(total - startOffset)
+		size := roundDownMiB(total - startOffset - endReserve)
 		pv := Partition{
 			ObjID: newObjID(), Status: "create", Type: "primary",
 			Start: bytes(startOffset), Size: bytes(size),

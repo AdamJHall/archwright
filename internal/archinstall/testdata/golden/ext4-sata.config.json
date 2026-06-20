@@ -108,7 +108,7 @@
               }
             },
             "size": {
-              "value": 63886589952,
+              "value": 63885541376,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -141,7 +141,7 @@
               "name": "root",
               "fs_type": "ext4",
               "length": {
-                "value": 63878201344,
+                "value": 63877152768,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,
