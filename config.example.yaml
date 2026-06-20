@@ -16,14 +16,15 @@ user:
   groups: [wheel, video, audio, storage, network]
 
 # --- disk layout ------------------------------------------------------------
-# Disk 1 (the `esp.device`) is partitioned: ESP + swap + remainder-as-LVM-PV.
-# Any other PVs listed are consumed as a single full-disk partition. All PVs
-# become one volume group -> one logical volume -> one filesystem mounted at /.
-# (Phase A renders this into an archinstall config and runs archinstall.)
+# Disk 1 (the `esp.device`) is partitioned: ESP + remainder-as-LVM-PV. Any other
+# PVs listed are consumed as a single full-disk partition. All PVs become one
+# volume group -> one logical volume -> one filesystem mounted at /. Swap is a
+# /swapfile of `swap.size` created on the root filesystem post-install (archinstall
+# 4.x can't format a raw swap partition in an LVM layout), so there is no swap
+# partition. (Phase A renders this into an archinstall config and runs archinstall.)
 #
 #   nvme0n1p1  <esp.size>   FAT32  -> /boot (EFI System Partition)
-#   nvme0n1p2  <swap.size>  swap
-#   nvme0n1p3  remainder    LVM PV
+#   nvme0n1p2  remainder    LVM PV
 #   sda        whole disk   LVM PV
 #   sdb        whole disk   LVM PV
 disks:
@@ -31,13 +32,13 @@ disks:
     device: /dev/nvme0n1
     size: 4GiB
   swap:
-    size: 64GiB                  # match RAM
+    size: 64GiB                  # /swapfile size (match RAM for hibernation)
   lvm:
     vg: vg0
     lv: root
     filesystem: xfs
     pvs:
-      - /dev/nvme0n1p3           # remainder partition of the ESP device
+      - /dev/nvme0n1p2           # remainder partition of the ESP device
       - /dev/sda                 # whole second disk
       - /dev/sdb                 # whole third disk
 

@@ -30,7 +30,7 @@ disks:
     vg: vg0
     lv: root
     filesystem: xfs
-    pvs: [/dev/nvme0n1p3, /dev/sda, /dev/sdb]
+    pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 mirrors:
   reflector: true
   countries: [GB, DE]
@@ -143,6 +143,10 @@ func TestPlan_Archinstall(t *testing.T) {
 		// remounts target + ESP for the chroot post-install work
 		"mount /dev/vg0/root /mnt",
 		"mount /dev/nvme0n1p1 /mnt/boot",
+		// swap is a post-install /swapfile (64GiB -> 65536 MiB), not a partition
+		"dd if=/dev/zero of=/mnt/swapfile bs=1M count=65536 status=none",
+		"mkswap /mnt/swapfile",
+		"echo '/swapfile none swap defaults 0 0' >> /mnt/etc/fstab",
 		// repos configured in the chroot (persist into the target)
 		"arch-chroot /mnt pacman-key --recv-keys 3056513887B78AEB --keyserver keyserver.ubuntu.com",
 		"arch-chroot /mnt pacman-key --lsign-key 3056513887B78AEB",

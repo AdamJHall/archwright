@@ -27,11 +27,11 @@
 #                     lsblk/blkid/findmnt/vgs/lvs.
 #
 # WHY loop devices work here
-#   archinstall (3.x) explicitly enumerates loop devices: it shells out to
-#   `losetup` to list active loops and resolves each via parted's getDevice().
-#   So loops attached with `losetup -fP` (partition scanning on) appear in its
-#   device model exactly like real disks. `-P` is required so the pN partition
-#   nodes (e.g. /dev/loop0p3, our disk-1 LVM PV) materialise.
+#   archinstall enumerates loop devices: it shells out to `losetup` to list
+#   active loops and resolves each via parted's getDevice(). So loops attached
+#   with `losetup -fP` (partition scanning on) appear in its device model
+#   exactly like real disks. `-P` is required so the pN partition nodes (e.g.
+#   /dev/loop0p2, our disk-1 LVM PV) materialise.
 #
 # WHAT THIS HARNESS DOES *NOT* do to production code
 #   It extracts the rendered archinstall JSON from `archwright install --dry-run`
@@ -150,9 +150,10 @@ if [[ "$LAYOUT" == "multi-disk-lvm" ]]; then
 	done
 fi
 
-# The disk-1 LVM PV is partition 3 of disk1. losetup uses the pN suffix
-# (/dev/loop0 -> /dev/loop0p3), which matches archinstall's partDev() logic.
-DISK1_PV="${DISK1}p3"
+# The disk-1 LVM PV is partition 2 of disk1 (ESP is p1; there is no swap
+# partition -- swap is a post-install /swapfile). losetup uses the pN suffix
+# (/dev/loop0 -> /dev/loop0p2), matching archinstall's partition ordering.
+DISK1_PV="${DISK1}p2"
 
 # --- render an archwright config.yaml at those devices ----------------------
 # Self-contained: does NOT depend on internal/archinstall/testdata.
@@ -265,11 +266,9 @@ esp_fs="$(blkid -s TYPE -o value "$ESP_PART" 2>/dev/null || true)"
 [[ "$esp_fs" == "vfat" ]] || fail "ESP $ESP_PART expected vfat (fat32), got '$esp_fs'"
 echo "OK: ESP $ESP_PART is fat32 (vfat)"
 
-# Swap must exist on disk1 partition 2.
-SWAP_PART="${DISK1}p2"
-swap_fs="$(blkid -s TYPE -o value "$SWAP_PART" 2>/dev/null || true)"
-[[ "$swap_fs" == "swap" ]] || fail "swap $SWAP_PART expected 'swap', got '$swap_fs'"
-echo "OK: swap $SWAP_PART present"
+# There is no swap partition: swap is a /swapfile created by archwright's
+# post-install step (this harness runs archinstall directly, so it only asserts
+# the archinstall-produced layout). Disk1 partition 2 is the LVM PV.
 
 # Volume group must exist and carry the expected number of PVs.
 vgs --noheadings -o vg_name | tr -d ' ' | grep -qx "$VG" || fail "VG '$VG' not found"

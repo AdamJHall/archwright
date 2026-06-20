@@ -109,6 +109,10 @@ func postInstall(ctx *Context) error {
 	ctx.R.Try("mount", lv, "/mnt")
 	ctx.R.Try("mount", esp, "/mnt/boot")
 
+	if err := setupSwapfile(ctx); err != nil {
+		return err
+	}
+
 	if len(ctx.Cfg.Repos) > 0 {
 		if err := configureRepos(ctx, ctx.Cfg.Repos); err != nil {
 			return err
@@ -126,6 +130,39 @@ func postInstall(ctx *Context) error {
 	ctx.R.Try("umount", "/mnt/boot")
 	ctx.R.Try("umount", "/mnt")
 	return nil
+}
+
+// setupSwapfile creates /swapfile on the freshly installed root and enables it
+// via fstab. archinstall 4.x can't format a raw swap partition in an LVM layout
+// (its LVM path formats only the boot partition), so swap lives as a file sized
+// from cfg.Disks.Swap.Size. Written with dd (real zeros) rather than fallocate
+// so it works on xfs too, where a preallocated file has unwritten extents that
+// swapon rejects. The target root is mounted at /mnt, so the in-system path is
+// /swapfile. No-op if no swap size is configured.
+func setupSwapfile(ctx *Context) error {
+	size := ctx.Cfg.Disks.Swap.Size
+	if size == "" {
+		return nil
+	}
+	n, err := archinstall.ParseSize(size)
+	if err != nil {
+		return fmt.Errorf("swap size: %w", err)
+	}
+	mib := n >> 20
+	if mib == 0 {
+		return fmt.Errorf("swap size %q is smaller than 1 MiB", size)
+	}
+	if err := ctx.R.Root("dd", "if=/dev/zero", "of=/mnt/swapfile",
+		"bs=1M", fmt.Sprintf("count=%d", mib), "status=none"); err != nil {
+		return err
+	}
+	if err := ctx.R.Root("chmod", "600", "/mnt/swapfile"); err != nil {
+		return err
+	}
+	if err := ctx.R.Root("mkswap", "/mnt/swapfile"); err != nil {
+		return err
+	}
+	return ctx.R.Shell("echo '/swapfile none swap defaults 0 0' >> /mnt/etc/fstab")
 }
 
 // runReflector refreshes the live ISO's mirrorlist with reflector per the mirrors

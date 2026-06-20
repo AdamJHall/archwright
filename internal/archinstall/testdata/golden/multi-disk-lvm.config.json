@@ -74,36 +74,7 @@
               }
             },
             "size": {
-              "value": 68719476736,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B"
-              }
-            },
-            "fs_type": "linux-swap",
-            "mountpoint": null,
-            "mount_options": [],
-            "flags": [
-              "swap"
-            ],
-            "dev_path": null,
-            "btrfs": []
-          },
-          {
-            "obj_id": "objid-0003",
-            "status": "create",
-            "type": "primary",
-            "start": {
-              "value": 73015492608,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B"
-              }
-            },
-            "size": {
-              "value": 476739272704,
+              "value": 545458749440,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -124,7 +95,7 @@
         "wipe": true,
         "partitions": [
           {
-            "obj_id": "objid-0004",
+            "obj_id": "objid-0003",
             "status": "create",
             "type": "primary",
             "start": {
@@ -157,7 +128,7 @@
         "wipe": true,
         "partitions": [
           {
-            "obj_id": "objid-0005",
+            "obj_id": "objid-0004",
             "status": "create",
             "type": "primary",
             "start": {
@@ -192,18 +163,18 @@
         {
           "name": "vg0",
           "lvm_pvs": [
+            "objid-0002",
             "objid-0003",
-            "objid-0004",
-            "objid-0005"
+            "objid-0004"
           ],
           "volumes": [
             {
-              "obj_id": "objid-0006",
+              "obj_id": "objid-0005",
               "status": "create",
               "name": "root",
               "fs_type": "xfs",
               "length": {
-                "value": 2675733168128,
+                "value": 2744452644864,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,

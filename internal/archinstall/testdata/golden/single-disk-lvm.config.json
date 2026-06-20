@@ -74,36 +74,7 @@
               }
             },
             "size": {
-              "value": 8589934592,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B"
-              }
-            },
-            "fs_type": "linux-swap",
-            "mountpoint": null,
-            "mount_options": [],
-            "flags": [
-              "swap"
-            ],
-            "dev_path": null,
-            "btrfs": []
-          },
-          {
-            "obj_id": "objid-0003",
-            "status": "create",
-            "type": "primary",
-            "start": {
-              "value": 9664724992,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B"
-              }
-            },
-            "size": {
-              "value": 265212133376,
+              "value": 273802067968,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -126,16 +97,16 @@
         {
           "name": "vg0",
           "lvm_pvs": [
-            "objid-0003"
+            "objid-0002"
           ],
           "volumes": [
             {
-              "obj_id": "objid-0004",
+              "obj_id": "objid-0003",
               "status": "create",
               "name": "root",
               "fs_type": "xfs",
               "length": {
-                "value": 265203744768,
+                "value": 273793679360,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,
