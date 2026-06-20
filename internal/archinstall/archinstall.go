@@ -16,8 +16,11 @@
 // Key facts that shaped this:
 //   - config_type "manual_partitioning": we hand archinstall explicit partitions.
 //   - A swap partition is fs_type "linux-swap" with flag "swap".
-//   - An LVM physical volume is just an unformatted partition (no fs_type/flag);
-//     the volume group claims it by listing the partition's obj_id in lvm_pvs.
+//   - An LVM physical volume is a partition carrying the LV's filesystem as its
+//     fs_type (archinstall 4.x's device_handler.partition() requires a non-null
+//     fs_type for parted to create any partition); the fs is never written — in
+//     LVM mode archinstall formats only the boot partition and pvcreates the
+//     rest. The volume group claims a PV by listing its obj_id in lvm_pvs.
 //   - There is NO "100%FREE"/percent size — every Size is concrete bytes, so we
 //     compute the "rest of disk" / "rest of VG" sizes from live device geometry.
 package archinstall
@@ -32,7 +35,7 @@ import (
 )
 
 // Version is the archinstall release this schema was modelled against.
-const Version = "3.0.9"
+const Version = "4.3"
 
 // newObjID generates the unique obj_id values archinstall uses to cross-reference
 // partitions from lvm_pvs. It is a package var solely so golden render tests can
@@ -57,16 +60,23 @@ const (
 
 // --- archinstall JSON schema (subset we emit) -------------------------------
 
+// SectorSize mirrors archinstall's SectorSize.json(): just {value, unit} (no
+// further nesting — unlike Size, which carries a sector_size).
+type SectorSize struct {
+	Value uint64 `json:"value"`
+	Unit  string `json:"unit"`
+}
+
 // Size mirrors archinstall's Size.json(): {value, unit, sector_size}. We always
 // emit value in bytes (unit "B") to avoid unit ambiguity for computed sizes.
 type Size struct {
-	Value      uint64 `json:"value"`
-	Unit       string `json:"unit"`
-	SectorSize *Size  `json:"sector_size"`
+	Value      uint64      `json:"value"`
+	Unit       string      `json:"unit"`
+	SectorSize *SectorSize `json:"sector_size"`
 }
 
 func bytes(n uint64) Size {
-	return Size{Value: n, Unit: "B", SectorSize: &Size{Value: 512, Unit: "B"}}
+	return Size{Value: n, Unit: "B", SectorSize: &SectorSize{Value: 512, Unit: "B"}}
 }
 
 // Partition mirrors PartitionModification.json().
@@ -218,6 +228,10 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 
 	boot := "/boot"
 	espFs, swapFs := "fat32", "linux-swap"
+	// A PV partition carries the LV filesystem as its fs_type purely so parted can
+	// create it (archinstall 4.x requires a non-null fs_type per partition); the
+	// filesystem is never written, the partition is pvcreated.
+	pvFs := cfg.Disks.LVM.Filesystem
 	espPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset), Size: bytes(espBytes),
@@ -232,7 +246,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	disk1PVPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset + espBytes + swapBytes), Size: bytes(pvOnDisk1),
-		FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+		FsType: &pvFs, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 	}
 
 	devices := []Device{{
@@ -255,7 +269,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		pv := Partition{
 			ObjID: newObjID(), Status: "create", Type: "primary",
 			Start: bytes(startOffset), Size: bytes(size),
-			FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+			FsType: &pvFs, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 		}
 		devices = append(devices, Device{Device: dev, Wipe: true, Partitions: []Partition{pv}})
 		pvObjIDs = append(pvObjIDs, pv.ObjID)

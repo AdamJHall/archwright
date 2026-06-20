@@ -40,8 +40,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -49,8 +48,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "fs_type": "fat32",
@@ -72,8 +70,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -81,8 +78,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "fs_type": "linux-swap",
@@ -103,8 +99,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -112,11 +107,10 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
-            "fs_type": null,
+            "fs_type": "xfs",
             "mountpoint": null,
             "mount_options": [],
             "flags": [],
@@ -145,8 +139,7 @@
                 "unit": "B",
                 "sector_size": {
                   "value": 512,
-                  "unit": "B",
-                  "sector_size": null
+                  "unit": "B"
                 }
               },
               "mountpoint": "/",
@@ -160,6 +153,6 @@
     "disk_encryption": null
   },
   "disk_encryption": null,
-  "version": "3.0.9",
-  "config_version": "3.0.9"
+  "version": "4.3",
+  "config_version": "4.3"
 }
