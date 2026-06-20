@@ -112,6 +112,17 @@ jobs:
           test -e /dev/loop-control || mknod /dev/loop-control c 10 237 || true
           losetup -f
 
+      - name: Start udevd
+        # archinstall syncs with udev (`udevadm settle`) after parted rewrites a
+        # partition table; in a bare container nothing runs udevd, so the new
+        # loopNpX partition nodes never materialise and archinstall fails with
+        # "Unable to determine new partition number". Running systemd-udevd makes
+        # settle real.
+        run: |
+          /usr/lib/systemd/systemd-udevd --daemon
+          udevadm trigger --type=devices --action=add || true
+          udevadm settle || true
+
       - name: Full install + layout assertions
         run: |
           # Bigger disks for a real pacstrap of the bootstrap package set.
