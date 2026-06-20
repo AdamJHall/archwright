@@ -1,0 +1,165 @@
+{
+  "archinstall-language": "English",
+  "bootloader": "Grub",
+  "kernels": [
+    "linux"
+  ],
+  "hostname": "arch-ext4",
+  "packages": [
+    "base-devel",
+    "git",
+    "zsh",
+    "sudo",
+    "networkmanager",
+    "efibootmgr"
+  ],
+  "timezone": "America/New_York",
+  "ntp": true,
+  "swap": false,
+  "locale_config": {
+    "kb_layout": "us",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_US"
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "disk_config": {
+    "config_type": "manual_partitioning",
+    "device_modifications": [
+      {
+        "device": "/dev/sda",
+        "wipe": true,
+        "partitions": [
+          {
+            "obj_id": "objid-0001",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1048576,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "size": {
+              "value": 536870912,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "fs_type": "fat32",
+            "mountpoint": "/boot",
+            "mount_options": [],
+            "flags": [
+              "boot",
+              "esp"
+            ],
+            "dev_path": null,
+            "btrfs": []
+          },
+          {
+            "obj_id": "objid-0002",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 537919488,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "size": {
+              "value": 4294967296,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "fs_type": "linux-swap",
+            "mountpoint": null,
+            "mount_options": [],
+            "flags": [
+              "swap"
+            ],
+            "dev_path": null,
+            "btrfs": []
+          },
+          {
+            "obj_id": "objid-0003",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 4832886784,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "size": {
+              "value": 63886589952,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B",
+                "sector_size": null
+              }
+            },
+            "fs_type": null,
+            "mountpoint": null,
+            "mount_options": [],
+            "flags": [],
+            "dev_path": null,
+            "btrfs": []
+          }
+        ]
+      }
+    ],
+    "lvm_config": {
+      "config_type": "default",
+      "vol_groups": [
+        {
+          "name": "system",
+          "lvm_pvs": [
+            "objid-0003"
+          ],
+          "volumes": [
+            {
+              "obj_id": "objid-0004",
+              "status": "create",
+              "name": "root",
+              "fs_type": "ext4",
+              "length": {
+                "value": 63878201344,
+                "unit": "B",
+                "sector_size": {
+                  "value": 512,
+                  "unit": "B",
+                  "sector_size": null
+                }
+              },
+              "mountpoint": "/",
+              "mount_options": [],
+              "btrfs": []
+            }
+          ]
+        }
+      ]
+    },
+    "disk_encryption": null
+  },
+  "disk_encryption": null,
+  "version": "3.0.9",
+  "config_version": "3.0.9"
+}

@@ -34,6 +34,11 @@ import (
 // Version is the archinstall release this schema was modelled against.
 const Version = "3.0.9"
 
+// newObjID generates the unique obj_id values archinstall uses to cross-reference
+// partitions from lvm_pvs. It is a package var solely so golden render tests can
+// swap in a deterministic generator; production always uses random UUIDs.
+var newObjID = uuid.NewString
+
 const (
 	mib = uint64(1) << 20
 	// startOffset is the first usable byte; 1 MiB is the conventional alignment.
@@ -208,18 +213,18 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	boot := "/boot"
 	espFs, swapFs := "fat32", "linux-swap"
 	espPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset), Size: bytes(espBytes),
 		FsType: &espFs, Mountpoint: &boot,
 		MountOptions: []string{}, Flags: []string{"boot", "esp"}, Btrfs: []any{},
 	}
 	swapPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset + espBytes), Size: bytes(swapBytes),
 		FsType: &swapFs, MountOptions: []string{}, Flags: []string{"swap"}, Btrfs: []any{},
 	}
 	disk1PVPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset + espBytes + swapBytes), Size: bytes(pvOnDisk1),
 		FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 	}
@@ -242,7 +247,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		}
 		size := roundDownMiB(total - startOffset)
 		pv := Partition{
-			ObjID: uuid.NewString(), Status: "create", Type: "primary",
+			ObjID: newObjID(), Status: "create", Type: "primary",
 			Start: bytes(startOffset), Size: bytes(size),
 			FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 		}
@@ -266,7 +271,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 			Name:   cfg.Disks.LVM.VG,
 			LvmPvs: pvObjIDs,
 			Volumes: []LvmVolume{{
-				ObjID: uuid.NewString(), Status: "create", Name: cfg.Disks.LVM.LV,
+				ObjID: newObjID(), Status: "create", Name: cfg.Disks.LVM.LV,
 				FsType: cfg.Disks.LVM.Filesystem, Length: bytes(lvBytes),
 				Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
 			}},

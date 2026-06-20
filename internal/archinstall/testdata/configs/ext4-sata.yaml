@@ -1,0 +1,19 @@
+# Single SATA disk (no 'p' partition suffix) with an ext4 root LV.
+system:
+  hostname: arch-ext4
+  timezone: America/New_York
+  locale: en_US.UTF-8
+  keymap: us
+user:
+  name: builder
+disks:
+  esp:
+    device: /dev/sda
+    size: 512MiB
+  swap:
+    size: 4GiB
+  lvm:
+    vg: system
+    lv: root
+    filesystem: ext4
+    pvs: [/dev/sda3]
