@@ -1,0 +1,234 @@
+package stages
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+
+	"github.com/AdamJHall/archwright/internal/archinstall"
+	"github.com/AdamJHall/archwright/internal/config"
+	"github.com/AdamJHall/archwright/internal/ui"
+)
+
+// archinstallStage is Phase A: render config.yaml into an archinstall config +
+// credentials file and let archinstall do the partitioning, LVM, pacstrap and
+// bootloader install. Replaces the old hand-rolled partition/lvm/mount/pacstrap/
+// system/initramfs/grub stages. After archinstall finishes it stages the binary
+// + config into the new user's home so Phase B is available post-reboot.
+type archinstallStage struct{}
+
+func init() { register(archinstallStage{}) }
+
+func (archinstallStage) Order() int   { return 10 }
+func (archinstallStage) Name() string { return "archinstall" }
+func (archinstallStage) Phase() Phase { return Install }
+
+const (
+	aiConfigPath = "/tmp/archinstall-config.json"
+	aiCredsPath  = "/tmp/archinstall-creds.json"
+)
+
+func (archinstallStage) Run(ctx *Context) error {
+	wiped := wipedDevices(ctx.Cfg)
+
+	// Destructive confirmation (skipped by --yes).
+	if !ctx.AssumeYes {
+		ui.Warn("archinstall will ERASE these devices", "devices", strings.Join(wiped, " "))
+		if err := ui.ConfirmErase("ERASE", "This wipes the disks above and installs Arch."); err != nil {
+			return err
+		}
+	}
+
+	// Credentials: prompt for a real install, throwaway for --yes (VMs only).
+	password := "installme"
+	if !ctx.AssumeYes {
+		pw, err := ui.Password(fmt.Sprintf("Set a password for user %q and root", ctx.Cfg.User.Name))
+		if err != nil {
+			return err
+		}
+		password = pw
+	}
+
+	geom, err := probeGeometry(wiped, ctx.R.DryRun)
+	if err != nil {
+		return err
+	}
+
+	cfg, creds, err := archinstall.Build(ctx.Cfg, geom, password)
+	if err != nil {
+		return fmt.Errorf("rendering archinstall config: %w", err)
+	}
+
+	// In dry-run, show the rendered config (secrets withheld) and stop short of
+	// writing files / invoking archinstall.
+	if ctx.R.DryRun {
+		data, _ := json.MarshalIndent(cfg, "", "  ")
+		ui.Info("would write archinstall config", "path", aiConfigPath)
+		fmt.Fprintln(os.Stderr, string(data))
+		ui.Info("would write credentials", "path", aiCredsPath, "users", len(creds.Users))
+	} else {
+		if err := writeJSON(aiConfigPath, cfg, 0o600); err != nil {
+			return err
+		}
+		if err := writeJSON(aiCredsPath, creds, 0o600); err != nil {
+			return err
+		}
+	}
+
+	// Pick fast mirrors before archinstall pacstraps (archinstall uses the live
+	// ISO's mirrorlist and copies it into the target).
+	if err := runReflector(ctx); err != nil {
+		return err
+	}
+
+	if err := ctx.R.Root("archinstall",
+		"--config", aiConfigPath, "--creds", aiCredsPath, "--silent"); err != nil {
+		return err
+	}
+
+	if err := postInstall(ctx); err != nil {
+		return err
+	}
+
+	ui.OK("archinstall complete; Phase B staged in /home/%s", ctx.Cfg.User.Name)
+	return nil
+}
+
+// postInstall runs after archinstall, inside the target: configure custom repos
+// and install custom kernels (so first boot already has them), then stage the
+// binary + config for Phase B. archinstall unmounts the target on finish, so we
+// remount the root LV and the ESP (kernels/GRUB live on /boot) for the chroot
+// work, then unmount.
+func postInstall(ctx *Context) error {
+	lv := fmt.Sprintf("/dev/%s/%s", ctx.Cfg.Disks.LVM.VG, ctx.Cfg.Disks.LVM.LV)
+	esp := partDev(ctx.Cfg.Disks.ESP.Device, 1)
+
+	ctx.R.Try("mount", lv, "/mnt")
+	ctx.R.Try("mount", esp, "/mnt/boot")
+
+	if len(ctx.Cfg.Repos) > 0 {
+		if err := configureRepos(ctx, ctx.Cfg.Repos); err != nil {
+			return err
+		}
+	}
+	if len(ctx.Cfg.Kernel.Packages) > 0 {
+		if err := installKernels(ctx, ctx.Cfg.Kernel); err != nil {
+			return err
+		}
+	}
+	if err := stageBinary(ctx); err != nil {
+		return err
+	}
+
+	ctx.R.Try("umount", "/mnt/boot")
+	ctx.R.Try("umount", "/mnt")
+	return nil
+}
+
+// runReflector refreshes the live ISO's mirrorlist with reflector per the mirrors
+// config, so pacstrap (and, since archinstall copies it, the installed system) use
+// fast, recent mirrors. No-op unless mirrors.reflector is set.
+func runReflector(ctx *Context) error {
+	m := ctx.Cfg.Mirrors
+	if !m.Enabled {
+		return nil
+	}
+	var args []string
+	if len(m.Countries) > 0 {
+		args = append(args, "--country", strings.Join(m.Countries, ","))
+	}
+	if m.Latest > 0 {
+		args = append(args, "--latest", strconv.Itoa(m.Latest))
+	}
+	if m.Fastest > 0 {
+		args = append(args, "--fastest", strconv.Itoa(m.Fastest))
+	}
+	if m.Sort != "" {
+		args = append(args, "--sort", m.Sort)
+	}
+	if len(m.Protocols) > 0 {
+		args = append(args, "--protocol", strings.Join(m.Protocols, ","))
+	}
+	args = append(args, "--save", "/etc/pacman.d/mirrorlist")
+	ui.Info("selecting mirrors with reflector")
+	return ctx.R.Root("reflector", args...)
+}
+
+// wipedDevices is the set of whole devices archinstall will wipe: disk 1 plus
+// every extra whole-disk PV (PV paths that aren't a partition of disk 1).
+func wipedDevices(cfg *config.Config) []string {
+	disk1 := cfg.Disks.ESP.Device
+	devs := []string{disk1}
+	for _, pv := range cfg.Disks.LVM.PVs {
+		if !strings.HasPrefix(pv, disk1) {
+			devs = append(devs, pv)
+		}
+	}
+	return devs
+}
+
+// probeGeometry reads each device's total size in bytes via `blockdev`. This is
+// a read-only query, so it runs directly (not through the Runner). In dry-run on
+// a machine without these devices it falls back to representative sizes so the
+// rendered plan is still meaningful.
+func probeGeometry(devs []string, dryRun bool) (archinstall.Geometry, error) {
+	geom := archinstall.Geometry{}
+	for _, dev := range devs {
+		out, err := exec.Command("blockdev", "--getsize64", dev).Output()
+		if err != nil {
+			if dryRun {
+				geom[dev] = 512 * (1 << 30) // 512 GiB placeholder
+				continue
+			}
+			return nil, fmt.Errorf("probing size of %s (is it present?): %w", dev, err)
+		}
+		n, err := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parsing size of %s: %w", dev, err)
+		}
+		geom[dev] = n
+	}
+	return geom, nil
+}
+
+// stageBinary copies the running binary + config into the freshly installed
+// user's home so Phase B is available after reboot. Assumes the target is already
+// mounted at /mnt (postInstall handles mount/unmount).
+func stageBinary(ctx *Context) error {
+	user := ctx.Cfg.User.Name
+	home := "/mnt/home/" + user
+
+	self, err := os.Executable()
+	if err != nil {
+		ui.Warn("could not resolve own path; skipping binary staging", "err", err)
+		return nil
+	}
+
+	if err := ctx.R.Root("mkdir", "-p", home); err != nil {
+		return err
+	}
+	if err := ctx.R.Root("cp", self, home+"/archwright"); err != nil {
+		return err
+	}
+	if ctx.ConfigPath != "" {
+		if err := ctx.R.Root("cp", ctx.ConfigPath, home+"/config.yaml"); err != nil {
+			return err
+		}
+	}
+	return ctx.R.Chroot("/mnt", "chown", "-R", fmt.Sprintf("%s:%s", user, user), "/home/"+user)
+}
+
+func writeJSON(path string, v any, mode os.FileMode) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling %s: %w", path, err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), mode); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
+	}
+	ui.Step("wrote %s", path)
+	return nil
+}

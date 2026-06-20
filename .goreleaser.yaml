@@ -1,0 +1,83 @@
+# goreleaser config for archwright. Build & release with:
+#
+#   goreleaser release --snapshot --clean        # local test build, no publish
+#   git tag v0.1.0 && git push origin v0.1.0
+#   goreleaser release --clean                   # tagged release to GitHub
+#
+# Self-distribution: grab the linux_amd64 tarball from the GitHub release.
+version: 2
+
+project_name: archwright
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: archwright
+    main: .
+    binary: archwright
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: archwright
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: config.example.yaml
+        info:
+          mode: 0644
+      - src: README.md
+        info:
+          mode: 0644
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  # Group commits into changesets-style sections using conventional-commit
+  # prefixes (feat:, fix:, …). Anything not matched falls into "Other".
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: Refactors
+      regexp: '^.*?refactor(\(.+\))??!?:.+$'
+      order: 3
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: AdamJHall
+    name: archwright

@@ -1,0 +1,66 @@
+package stages
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+
+	"github.com/AdamJHall/archwright/internal/ui"
+)
+
+// plymouth is the Phase B 50-plymouth equivalent: install Plymouth, wire its
+// initramfs hook, set the 'quiet splash' kernel params, set the theme, and
+// regenerate grub.cfg.
+type plymouth struct{}
+
+func init() { register(plymouth{}) }
+
+func (plymouth) Order() int   { return 50 }
+func (plymouth) Name() string { return "plymouth" }
+func (plymouth) Phase() Phase { return Bootstrap }
+
+func (plymouth) Run(ctx *Context) error {
+	theme := ctx.Cfg.Plymouth.Theme
+	if theme == "" {
+		theme = "bgrt"
+	}
+	cmdline := ctx.Cfg.GRUB.CmdlineExtra
+	if cmdline == "" {
+		cmdline = "quiet splash"
+	}
+
+	if _, err := exec.LookPath("plymouth"); err != nil {
+		if err := ctx.R.Root("pacman", "-S", "--needed", "--noconfirm", "plymouth"); err != nil {
+			return err
+		}
+	}
+
+	// Add the plymouth hook after 'udev' (fallback 'systemd'), idempotently.
+	if err := ctx.R.Shell(
+		`grep -qE '^HOOKS=.*\bplymouth\b' /etc/mkinitcpio.conf || ` +
+			`sudo sed -i -E 's/^(HOOKS=.*)\budev\b/\1udev plymouth/; t; s/^(HOOKS=.*)\bsystemd\b/\1systemd plymouth/' /etc/mkinitcpio.conf`,
+	); err != nil {
+		return err
+	}
+
+	// Ensure each kernel param is present in GRUB_CMDLINE_LINUX_DEFAULT.
+	for _, tok := range strings.Fields(cmdline) {
+		if err := ctx.R.Shell(fmt.Sprintf(
+			`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\b%[1]s\b' /etc/default/grub || `+
+				`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1%[1]s /' /etc/default/grub`,
+			tok)); err != nil {
+			return err
+		}
+	}
+
+	// -R rebuilds the initramfs, picking up the new HOOKS line too.
+	if err := ctx.R.Root("plymouth-set-default-theme", "-R", theme); err != nil {
+		return err
+	}
+	if err := ctx.R.Root("grub-mkconfig", "-o", "/boot/grub/grub.cfg"); err != nil {
+		return err
+	}
+
+	ui.OK("plymouth configured")
+	return nil
+}

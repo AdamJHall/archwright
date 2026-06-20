@@ -1,0 +1,122 @@
+# Archwright configuration.
+#
+# Copy to config.yaml and edit:   cp config.example.yaml config.yaml
+# config.yaml is gitignored so your real machine config stays out of git.
+
+system:
+  hostname: arch-box
+  timezone: Europe/London        # see: timedatectl list-timezones
+  locale: en_GB.UTF-8            # must also be uncommented in /etc/locale.gen (handled)
+  keymap: uk                     # console keymap; see: localectl list-keymaps
+
+user:
+  name: adam
+  shell: /usr/bin/zsh
+  # Supplementary groups. `wheel` gives sudo (configured in stage 50).
+  groups: [wheel, video, audio, storage, network]
+
+# --- disk layout ------------------------------------------------------------
+# Disk 1 (the `esp.device`) is partitioned: ESP + swap + remainder-as-LVM-PV.
+# Any other PVs listed are consumed as a single full-disk partition. All PVs
+# become one volume group -> one logical volume -> one filesystem mounted at /.
+# (Phase A renders this into an archinstall config and runs archinstall.)
+#
+#   nvme0n1p1  <esp.size>   FAT32  -> /boot (EFI System Partition)
+#   nvme0n1p2  <swap.size>  swap
+#   nvme0n1p3  remainder    LVM PV
+#   sda        whole disk   LVM PV
+#   sdb        whole disk   LVM PV
+disks:
+  esp:
+    device: /dev/nvme0n1
+    size: 4GiB
+  swap:
+    size: 64GiB                  # match RAM
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: xfs
+    pvs:
+      - /dev/nvme0n1p3           # remainder partition of the ESP device
+      - /dev/sda                 # whole second disk
+      - /dev/sdb                 # whole third disk
+
+# --- mirrors ----------------------------------------------------------------
+# Optional: run reflector in the live ISO before archinstall, so pacstrap (and
+# the installed system, which inherits the mirrorlist) use fast, recent mirrors.
+# Omit the section, or set reflector: false, to skip it.
+mirrors:
+  reflector: true
+  countries: [GB, DE]            # --country; omit for worldwide
+  latest: 20                     # --latest N most-recently-synced
+  # fastest: 10                  # --fastest N by measured download rate
+  sort: rate                     # rate | age | score | delay | country
+  protocols: [https]             # --protocol
+
+# --- software ---------------------------------------------------------------
+# Custom pacman repositories. Configured in Phase A's post-install chroot (so a
+# custom kernel can be installed before first boot) and persisted into the system.
+# Each field is optional — use what a repo needs:
+#   key/keyserver : import + locally sign the repo signing key (pacman-key)
+#   setup         : a root shell snippet (no sudo) for repos that ship a maintained
+#                   installer (e.g. CachyOS, which detects x86-64-v3/v4 CPU
+#                   features) — avoids pinning versioned keyring/mirrorlist URLs
+#   server/include: the line written into the repo's pacman.conf section
+repos:
+  - name: cachyos
+    setup: |
+      curl -fsSL https://mirror.cachyos.org/cachyos-repo.tar.xz | tar -xJ -C /tmp
+      /tmp/cachyos-repo/cachyos-repo.sh --install
+  # Example of a purely declarative repo (no script):
+  # - name: chaotic-aur
+  #   key: 3056513887B78AEB
+  #   keyserver: keyserver.ubuntu.com
+  #   include: /etc/pacman.d/chaotic-mirrorlist
+
+packages:                        # official-repo packages (pacman -S --needed)
+  - base-devel
+  - git
+  - vim
+  - firefox
+  - kitty
+  - dolphin
+  - plasma-meta
+  - sddm
+
+# Extra kernels, installed in Phase A from the repos above (so first boot already
+# runs them). archinstall always installs the stock `linux` for a bootable
+# baseline; replace_stock removes it before first boot so nothing lingers.
+kernel:
+  packages: [linux-cachyos, linux-cachyos-headers]
+  default: linux-cachyos         # GRUB default entry; must be one of packages
+  replace_stock: true            # remove the stock `linux` kernel after install
+
+flatpaks:                        # installed from Flathub
+  - com.spotify.Client
+  - md.obsidian.Obsidian
+
+aur:                             # built via yay
+  - 1password
+  - 1password-cli
+
+# --- boot splash / theming --------------------------------------------------
+plymouth:
+  theme: bgrt                    # name passed to plymouth-set-default-theme
+
+grub:
+  cmdline_extra: "quiet splash"  # appended to GRUB_CMDLINE_LINUX_DEFAULT
+  theme:
+    source: vinceliuice          # vinceliuice | url | none
+    name: tela                   # vinceliuice theme name (tela|stylish|vimix|whitesur|slaze)
+    # url: https://example.com/theme.tar.gz   # used when source: url
+
+# --- desktop ----------------------------------------------------------------
+kde:
+  look_and_feel: org.kde.breezedark.desktop
+  color_scheme: BreezeDark
+  cursor_theme: breeze_cursors
+  # wallpaper: /usr/share/wallpapers/Next/contents/images/1920x1080.png
+
+# --- dotfiles ---------------------------------------------------------------
+chezmoi:
+  repo: https://github.com/AdamJHall/dotfiles

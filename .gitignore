@@ -1,0 +1,7 @@
+# Your real machine config — keep it out of git.
+/config.yaml
+
+# Editor / OS noise
+*.swp
+*~
+.DS_Store

@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf install.sh bootstrap.sh lib post stages)",
+      "Bash(rm -f README.md go/README.md)",
+      "Bash(mv go/main.go go/go.mod go/go.sum go/.goreleaser.yaml go/internal .)",
+      "Bash(rmdir go *)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//tmp/**)",
+      "Bash(gh api *)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(i['path']\\) for i in d.get\\('items',[]\\)]\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['path']\\) for t in d['tree'] if 'device_model' in t['path'] or t['path'].endswith\\('lvm.py'\\)]\")",
+      "Bash(python -c \"import sys,json; [print\\(i['path']\\) for i in json.load\\(sys.stdin\\)]\")",
+      "WebFetch(domain:api.github.com)",
+      "Bash(go mod *)",
+      "Bash(go build *)",
+      "Bash(go vet *)",
+      "Bash(go test *)",
+      "Bash(/tmp/archwright --version)",
+      "Bash(cd *)",
+      "Bash(gofmt -l .)"
+    ]
+  }
+}
