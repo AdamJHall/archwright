@@ -34,10 +34,21 @@ import (
 // Version is the archinstall release this schema was modelled against.
 const Version = "3.0.9"
 
+// newObjID generates the unique obj_id values archinstall uses to cross-reference
+// partitions from lvm_pvs. It is a package var solely so golden render tests can
+// swap in a deterministic generator; production always uses random UUIDs.
+var newObjID = uuid.NewString
+
 const (
 	mib = uint64(1) << 20
 	// startOffset is the first usable byte; 1 MiB is the conventional alignment.
 	startOffset = mib
+	// endReserve is shaved off the end of every disk for the secondary (backup)
+	// GPT header, which lives in the last ~33 sectors. Without it the last
+	// partition on a disk runs to the device end and overlaps the backup GPT, and
+	// archinstall rejects the layout ("Partition overlaps backup GPT header").
+	// 1 MiB comfortably covers the backup GPT and keeps MiB alignment.
+	endReserve = mib
 	// vgHeadroomPerPV is shaved off each PV when sizing the root LV, to stay
 	// safely under the volume group's free extents (LVM metadata + alignment).
 	// A few MiB lost across a multi-disk array is irrelevant.
@@ -199,7 +210,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	if !ok || disk1Total == 0 {
 		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
 	}
-	used := startOffset + espBytes + swapBytes
+	used := startOffset + espBytes + swapBytes + endReserve
 	if disk1Total <= used {
 		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
 	}
@@ -208,18 +219,18 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	boot := "/boot"
 	espFs, swapFs := "fat32", "linux-swap"
 	espPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset), Size: bytes(espBytes),
 		FsType: &espFs, Mountpoint: &boot,
 		MountOptions: []string{}, Flags: []string{"boot", "esp"}, Btrfs: []any{},
 	}
 	swapPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset + espBytes), Size: bytes(swapBytes),
 		FsType: &swapFs, MountOptions: []string{}, Flags: []string{"swap"}, Btrfs: []any{},
 	}
 	disk1PVPart := Partition{
-		ObjID: uuid.NewString(), Status: "create", Type: "primary",
+		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset + espBytes + swapBytes), Size: bytes(pvOnDisk1),
 		FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 	}
@@ -237,12 +248,12 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		if !ok || total == 0 {
 			return nil, nil, fmt.Errorf("no geometry for PV disk %s", dev)
 		}
-		if total <= startOffset {
+		if total <= startOffset+endReserve {
 			return nil, nil, fmt.Errorf("PV disk %s (%d bytes) too small", dev, total)
 		}
-		size := roundDownMiB(total - startOffset)
+		size := roundDownMiB(total - startOffset - endReserve)
 		pv := Partition{
-			ObjID: uuid.NewString(), Status: "create", Type: "primary",
+			ObjID: newObjID(), Status: "create", Type: "primary",
 			Start: bytes(startOffset), Size: bytes(size),
 			FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 		}
@@ -266,7 +277,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 			Name:   cfg.Disks.LVM.VG,
 			LvmPvs: pvObjIDs,
 			Volumes: []LvmVolume{{
-				ObjID: uuid.NewString(), Status: "create", Name: cfg.Disks.LVM.LV,
+				ObjID: newObjID(), Status: "create", Name: cfg.Disks.LVM.LV,
 				FsType: cfg.Disks.LVM.Filesystem, Length: bytes(lvBytes),
 				Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
 			}},

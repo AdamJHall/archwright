@@ -1,0 +1,19 @@
+# Single NVMe disk: ESP + swap + one PV partition, all on disk 1.
+system:
+  hostname: arch-single
+  timezone: Europe/London
+  locale: en_GB.UTF-8
+  keymap: uk
+user:
+  name: adam
+disks:
+  esp:
+    device: /dev/nvme0n1
+    size: 1GiB
+  swap:
+    size: 8GiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: xfs
+    pvs: [/dev/nvme0n1p3]

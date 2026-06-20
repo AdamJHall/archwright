@@ -1,0 +1,75 @@
+# End-to-end testing, tiered by cost/fidelity (see CLAUDE.md "Testing").
+#
+# Tier 1 (this file) — render matrix: no VM, no privileges. For each config
+# fixture it builds the binary, validates the config, runs the real install CLI
+# in --dry-run (exercising config.Load -> archinstall.Build -> JSON render), and
+# asserts the rendered archinstall JSON byte-for-byte against a golden snapshot.
+# This is the cheap gate for the fragile, version-coupled archinstall schema.
+#
+# Tier 2 (loopback disk integration) and Tier 3 (QEMU boot-to-desktop) live in
+# their own workflows so their heavier requirements (privileges, /dev/kvm) don't
+# slow this gate down.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render-matrix:
+    name: render (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per disk layout under internal/archinstall/testdata/configs.
+        # Add a fixture + golden snapshot, then list it here.
+        config:
+          - single-disk-lvm
+          - multi-disk-lvm
+          - ext4-sata
+    env:
+      FIXTURE: internal/archinstall/testdata/configs/${{ matrix.config }}.yaml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build -o archwright .
+
+      - name: Validate config
+        run: ./archwright validate --config "$FIXTURE"
+
+      - name: Render via full CLI (dry-run, no privileges)
+        # --only archinstall skips the UEFI preflight check; --yes skips the
+        # destructive confirm + password prompt; missing devices fall back to
+        # placeholder geometry. Nothing is written or executed in --dry-run.
+        run: |
+          ./archwright install --only archinstall --dry-run --yes \
+            --config "$FIXTURE" 2> render.log
+          # The rendered config is the indented JSON object printed to stderr;
+          # UI log lines are styled single lines, so the {...} block extracts
+          # cleanly. Sanity-check the shape the installer cares about.
+          sed -n '/^{/,/^}/p' render.log > rendered.json
+          jq -e '
+            .disk_config.config_type == "manual_partitioning"
+            and (.disk_config.device_modifications | length > 0)
+            and (.disk_config.lvm_config.vol_groups | length == 1)
+            and .version != null
+          ' rendered.json > /dev/null
+
+      - name: Golden snapshot (byte-exact archinstall JSON)
+        # Authoritative check: renders against fixed geometry with deterministic
+        # obj_ids and diffs against testdata/golden. On an intended change rerun:
+        #   go test ./internal/archinstall/ -run TestRenderGolden -update
+        run: go test ./internal/archinstall/ -run "TestRenderGolden/${{ matrix.config }}" -v

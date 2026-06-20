@@ -1,0 +1,19 @@
+# NVMe (ESP+swap+PV) plus two whole extra SATA disks as full-disk PVs.
+system:
+  hostname: arch-multi
+  timezone: Europe/London
+  locale: en_GB.UTF-8
+  keymap: uk
+user:
+  name: adam
+disks:
+  esp:
+    device: /dev/nvme0n1
+    size: 4GiB
+  swap:
+    size: 64GiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: xfs
+    pvs: [/dev/nvme0n1p3, /dev/sda, /dev/sdb]
