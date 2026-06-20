@@ -40,8 +40,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -49,8 +48,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "fs_type": "fat32",
@@ -72,51 +70,18 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
-              "value": 68719476736,
+              "value": 545458749440,
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
-            "fs_type": "linux-swap",
-            "mountpoint": null,
-            "mount_options": [],
-            "flags": [
-              "swap"
-            ],
-            "dev_path": null,
-            "btrfs": []
-          },
-          {
-            "obj_id": "objid-0003",
-            "status": "create",
-            "type": "primary",
-            "start": {
-              "value": 73015492608,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B",
-                "sector_size": null
-              }
-            },
-            "size": {
-              "value": 476739272704,
-              "unit": "B",
-              "sector_size": {
-                "value": 512,
-                "unit": "B",
-                "sector_size": null
-              }
-            },
-            "fs_type": null,
+            "fs_type": "xfs",
             "mountpoint": null,
             "mount_options": [],
             "flags": [],
@@ -130,7 +95,7 @@
         "wipe": true,
         "partitions": [
           {
-            "obj_id": "objid-0004",
+            "obj_id": "objid-0003",
             "status": "create",
             "type": "primary",
             "start": {
@@ -138,8 +103,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -147,11 +111,10 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
-            "fs_type": null,
+            "fs_type": "xfs",
             "mountpoint": null,
             "mount_options": [],
             "flags": [],
@@ -165,7 +128,7 @@
         "wipe": true,
         "partitions": [
           {
-            "obj_id": "objid-0005",
+            "obj_id": "objid-0004",
             "status": "create",
             "type": "primary",
             "start": {
@@ -173,8 +136,7 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
             "size": {
@@ -182,11 +144,10 @@
               "unit": "B",
               "sector_size": {
                 "value": 512,
-                "unit": "B",
-                "sector_size": null
+                "unit": "B"
               }
             },
-            "fs_type": null,
+            "fs_type": "xfs",
             "mountpoint": null,
             "mount_options": [],
             "flags": [],
@@ -202,23 +163,22 @@
         {
           "name": "vg0",
           "lvm_pvs": [
+            "objid-0002",
             "objid-0003",
-            "objid-0004",
-            "objid-0005"
+            "objid-0004"
           ],
           "volumes": [
             {
-              "obj_id": "objid-0006",
+              "obj_id": "objid-0005",
               "status": "create",
               "name": "root",
               "fs_type": "xfs",
               "length": {
-                "value": 2675733168128,
+                "value": 2744452644864,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,
-                  "unit": "B",
-                  "sector_size": null
+                  "unit": "B"
                 }
               },
               "mountpoint": "/",
@@ -232,6 +192,6 @@
     "disk_encryption": null
   },
   "disk_encryption": null,
-  "version": "3.0.9",
-  "config_version": "3.0.9"
+  "version": "4.3",
+  "config_version": "4.3"
 }

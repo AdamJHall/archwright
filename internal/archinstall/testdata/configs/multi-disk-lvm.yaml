@@ -16,4 +16,4 @@ disks:
     vg: vg0
     lv: root
     filesystem: xfs
-    pvs: [/dev/nvme0n1p3, /dev/sda, /dev/sdb]
+    pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]

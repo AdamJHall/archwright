@@ -1,12 +1,17 @@
 # Tier 2 integration: prove archwright's rendered archinstall JSON is accepted by
 # a real archinstall against loopback block devices (CLAUDE.md gotcha #1).
 #
-# Jobs:
-#   light  - archinstall --dry-run validation of the rendered config. Fast, no
-#            network, no destruction. Runs on PRs + pushes across a layout matrix.
-#   full   - a real partition/format/pacstrap onto loop devices, then layout
-#            assertions. Slow + needs network/space, so it is gated behind manual
-#            dispatch and a nightly schedule only.
+# This validates the config against the *real* archinstall (catching schema drift
+# after a version bump) via `archinstall --dry-run`: it parses the config and
+# builds its device model against live loop devices, without partitioning,
+# formatting or pacstrapping.
+#
+# A full install-to-completion is deliberately NOT run here: a bare container has
+# no booted systemd, so archinstall's install phase fails on udev/D-Bus
+# (timedatectl, systemctl) assumptions it makes about a live ISO. Real end-to-end
+# installs run in the QEMU VM harness instead (test/vm.sh / `make vm`), which
+# boots a real systemd. `test/e2e/disks.sh --mode full` still works for manual
+# runs on a real host/VM (`make e2e-disks-full`); it's just not container CI.
 name: e2e-disks
 
 on:
@@ -15,20 +20,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      run_full:
-        description: "Also run the heavy full archinstall job"
-        type: boolean
-        default: false
-  schedule:
-    # Nightly full run (03:17 UTC) to catch archinstall package drift on Arch.
-    - cron: "17 3 * * *"
 
 permissions:
   contents: read
 
 jobs:
-  # --- LIGHT: validate rendered JSON against real archinstall (no install) ----
+  # Validate the rendered JSON against a real archinstall (no install).
   light:
     runs-on: ubuntu-latest
     container:
@@ -61,52 +58,20 @@ jobs:
           test -e /dev/loop-control || mknod /dev/loop-control c 10 237 || true
           losetup -f
 
+      - name: Start udevd
+        # archinstall syncs with udev via `udevadm settle` after parted rewrites a
+        # partition table. In a bare container nothing runs udevd, so settle is a
+        # no-op and the new loopNpX partition nodes/attributes never materialize
+        # -- archinstall then fails with "Unable to determine new partition
+        # number". Running systemd-udevd makes settle real.
+        run: |
+          /usr/lib/systemd/systemd-udevd --daemon
+          udevadm trigger --type=devices --action=add || true
+          udevadm settle || true
+
       - name: Light validation (archinstall --dry-run)
         run: |
           bash test/e2e/disks.sh \
             --mode light \
             --layout "${{ matrix.layout }}" \
             --fs "${{ matrix.fs }}"
-
-  # --- FULL: real install onto loop devices, then assert layout ---------------
-  # Only on manual dispatch (with run_full=true) or the nightly schedule.
-  full:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && inputs.run_full) ||
-      github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-      options: --privileged -v /dev:/dev
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - layout: single-disk-lvm
-            fs: ext4
-          - layout: multi-disk-lvm
-            fs: xfs
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain
-        run: |
-          pacman -Sy --noconfirm --needed \
-            go git util-linux lvm2 archinstall arch-install-scripts \
-            dosfstools e2fsprogs xfsprogs python
-
-      - name: Ensure loop module + control node
-        run: |
-          modprobe loop || true
-          test -e /dev/loop-control || mknod /dev/loop-control c 10 237 || true
-          losetup -f
-
-      - name: Full install + layout assertions
-        run: |
-          # Bigger disks for a real pacstrap of the bootstrap package set.
-          bash test/e2e/disks.sh \
-            --mode full \
-            --layout "${{ matrix.layout }}" \
-            --fs "${{ matrix.fs }}" \
-            --disk1-size 12G \
-            --extra-size 6G

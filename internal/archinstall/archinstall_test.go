@@ -28,7 +28,7 @@ disks:
     vg: vg0
     lv: root
     filesystem: xfs
-    pvs: [/dev/nvme0n1p3, /dev/sda, /dev/sdb]
+    pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 packages: [git, firefox]
 `
 
@@ -93,34 +93,33 @@ func TestBuild_DiskLayout(t *testing.T) {
 		t.Error("swap (zram) should be false; we use a swap partition")
 	}
 
-	// disk 1 must have exactly ESP + swap + PV, in order.
+	// disk 1 must have exactly ESP + PV, in order (no swap partition: swap is a
+	// post-install /swapfile).
 	d1 := c.DiskConfig.DeviceModifications[0]
-	if d1.Device != "/dev/nvme0n1" || !d1.Wipe || len(d1.Partitions) != 3 {
+	if d1.Device != "/dev/nvme0n1" || !d1.Wipe || len(d1.Partitions) != 2 {
 		t.Fatalf("disk1 modification wrong: %+v", d1)
 	}
-	esp, swap, pv := d1.Partitions[0], d1.Partitions[1], d1.Partitions[2]
+	esp, pv := d1.Partitions[0], d1.Partitions[1]
 	if esp.FsType == nil || *esp.FsType != "fat32" || esp.Mountpoint == nil || *esp.Mountpoint != "/boot" {
 		t.Errorf("ESP wrong: %+v", esp)
 	}
 	if !hasFlag(esp.Flags, "boot") || !hasFlag(esp.Flags, "esp") {
 		t.Errorf("ESP flags = %v", esp.Flags)
 	}
-	if swap.FsType == nil || *swap.FsType != "linux-swap" || !hasFlag(swap.Flags, "swap") {
-		t.Errorf("swap wrong: %+v", swap)
+	// PV: unmounted, unflagged, carries the LV filesystem so 4.x parted can create it.
+	if !isPV(pv) {
+		t.Errorf("disk1 PV partition should be unmounted+unflagged: %+v", pv)
 	}
-	if pv.FsType != nil {
-		t.Errorf("PV partition must be unformatted (fs_type null), got %v", *pv.FsType)
+	if pv.FsType == nil || *pv.FsType != "xfs" {
+		t.Errorf("PV fs_type = %v, want xfs (the LV filesystem)", pv.FsType)
 	}
 
-	// ESP size honored; swap follows ESP; PV follows swap (1 MiB aligned start).
+	// ESP size honored; PV follows ESP directly (1 MiB aligned start, no swap gap).
 	if esp.Size.Value != 4<<30 {
 		t.Errorf("ESP size = %d, want %d", esp.Size.Value, 4<<30)
 	}
-	if swap.Start.Value != mib+(4<<30) {
-		t.Errorf("swap start = %d, want %d", swap.Start.Value, mib+(4<<30))
-	}
-	if pv.Start.Value != mib+(4<<30)+(64<<30) {
-		t.Errorf("PV start = %d", pv.Start.Value)
+	if pv.Start.Value != mib+(4<<30) {
+		t.Errorf("PV start = %d, want %d", pv.Start.Value, mib+(4<<30))
 	}
 
 	// Two extra whole disks -> 3 device modifications total.
@@ -128,7 +127,7 @@ func TestBuild_DiskLayout(t *testing.T) {
 		t.Fatalf("want 3 device modifications, got %d", len(c.DiskConfig.DeviceModifications))
 	}
 	for _, d := range c.DiskConfig.DeviceModifications[1:] {
-		if len(d.Partitions) != 1 || d.Partitions[0].FsType != nil {
+		if len(d.Partitions) != 1 || !isPV(d.Partitions[0]) {
 			t.Errorf("whole-disk PV %s wrong: %+v", d.Device, d.Partitions)
 		}
 		if d.Partitions[0].Start.Value != mib {
@@ -148,7 +147,7 @@ func TestBuild_PVWiring(t *testing.T) {
 	pvIDs := map[string]bool{}
 	for _, d := range c.DiskConfig.DeviceModifications {
 		for _, p := range d.Partitions {
-			if p.FsType == nil {
+			if isPV(p) {
 				pvIDs[p.ObjID] = true
 			}
 		}
@@ -181,7 +180,7 @@ func TestBuild_PVWiring(t *testing.T) {
 	var sumPV uint64
 	for _, d := range c.DiskConfig.DeviceModifications {
 		for _, p := range d.Partitions {
-			if p.FsType == nil {
+			if isPV(p) {
 				sumPV += p.Size.Value
 			}
 		}
@@ -231,6 +230,11 @@ func TestBuild_MissingGeometryErrors(t *testing.T) {
 		t.Error("expected error with no geometry")
 	}
 }
+
+// isPV identifies an LVM PV partition structurally: unmounted and unflagged
+// (the ESP has /boot + boot/esp flags, swap has the swap flag). Since 4.x the PV
+// also carries the LV filesystem as its fs_type, so fs_type no longer marks it.
+func isPV(p Partition) bool { return p.Mountpoint == nil && len(p.Flags) == 0 }
 
 func hasFlag(flags []string, want string) bool {
 	for _, f := range flags {

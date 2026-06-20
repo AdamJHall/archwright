@@ -16,4 +16,4 @@ disks:
     vg: system
     lv: root
     filesystem: ext4
-    pvs: [/dev/sda3]
+    pvs: [/dev/sda2]

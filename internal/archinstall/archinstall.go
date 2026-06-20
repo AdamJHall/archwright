@@ -15,9 +15,14 @@
 //
 // Key facts that shaped this:
 //   - config_type "manual_partitioning": we hand archinstall explicit partitions.
-//   - A swap partition is fs_type "linux-swap" with flag "swap".
-//   - An LVM physical volume is just an unformatted partition (no fs_type/flag);
-//     the volume group claims it by listing the partition's obj_id in lvm_pvs.
+//   - There is no swap partition: archinstall 4.x's LVM path formats only the
+//     boot partition, so a raw swap partition is never mkswap'd yet still gets a
+//     failing swapon. Swap is a post-install /swapfile instead (see the stage).
+//   - An LVM physical volume is a partition carrying the LV's filesystem as its
+//     fs_type (archinstall 4.x's device_handler.partition() requires a non-null
+//     fs_type for parted to create any partition); the fs is never written — in
+//     LVM mode archinstall formats only the boot partition and pvcreates the
+//     rest. The volume group claims a PV by listing its obj_id in lvm_pvs.
 //   - There is NO "100%FREE"/percent size — every Size is concrete bytes, so we
 //     compute the "rest of disk" / "rest of VG" sizes from live device geometry.
 package archinstall
@@ -32,7 +37,7 @@ import (
 )
 
 // Version is the archinstall release this schema was modelled against.
-const Version = "3.0.9"
+const Version = "4.3"
 
 // newObjID generates the unique obj_id values archinstall uses to cross-reference
 // partitions from lvm_pvs. It is a package var solely so golden render tests can
@@ -57,16 +62,23 @@ const (
 
 // --- archinstall JSON schema (subset we emit) -------------------------------
 
+// SectorSize mirrors archinstall's SectorSize.json(): just {value, unit} (no
+// further nesting — unlike Size, which carries a sector_size).
+type SectorSize struct {
+	Value uint64 `json:"value"`
+	Unit  string `json:"unit"`
+}
+
 // Size mirrors archinstall's Size.json(): {value, unit, sector_size}. We always
 // emit value in bytes (unit "B") to avoid unit ambiguity for computed sizes.
 type Size struct {
-	Value      uint64 `json:"value"`
-	Unit       string `json:"unit"`
-	SectorSize *Size  `json:"sector_size"`
+	Value      uint64      `json:"value"`
+	Unit       string      `json:"unit"`
+	SectorSize *SectorSize `json:"sector_size"`
 }
 
 func bytes(n uint64) Size {
-	return Size{Value: n, Unit: "B", SectorSize: &Size{Value: 512, Unit: "B"}}
+	return Size{Value: n, Unit: "B", SectorSize: &SectorSize{Value: 512, Unit: "B"}}
 }
 
 // Partition mirrors PartitionModification.json().
@@ -182,10 +194,11 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	if err != nil {
 		return nil, nil, fmt.Errorf("esp size: %w", err)
 	}
-	swapBytes, err := parseSize(cfg.Disks.Swap.Size)
-	if err != nil {
-		return nil, nil, fmt.Errorf("swap size: %w", err)
-	}
+	// Swap is NOT a partition: archinstall 4.x's LVM path formats only the boot
+	// partition (PVs are pvcreated), so a raw swap partition would never get
+	// mkswap'd yet archinstall would still swapon it and fail. Swap is instead a
+	// /swapfile created post-install (see the install stage), sized from
+	// cfg.Disks.Swap.Size, so it is not consumed here.
 
 	// Split the configured PVs into the one that lives on disk 1 and the rest
 	// (whole extra disks). The disk-1 PV path is a partition under disk1.
@@ -202,42 +215,41 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		}
 	}
 	if disk1PV == "" {
-		return nil, nil, fmt.Errorf("no LVM PV found on disk 1 (%s); expected a partition like %s", disk1, partDev(disk1, 3))
+		return nil, nil, fmt.Errorf("no LVM PV found on disk 1 (%s); expected a partition like %s", disk1, partDev(disk1, 2))
 	}
 
-	// Disk 1: ESP + swap + PV partition. Sizes computed from disk1 geometry.
+	// Disk 1: ESP + PV partition (no swap partition). Sizes computed from geometry.
 	disk1Total, ok := geom[disk1]
 	if !ok || disk1Total == 0 {
 		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
 	}
-	used := startOffset + espBytes + swapBytes + endReserve
+	used := startOffset + espBytes + endReserve
 	if disk1Total <= used {
-		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
+		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP (%d bytes)", disk1, disk1Total, used)
 	}
 	pvOnDisk1 := roundDownMiB(disk1Total - used)
 
 	boot := "/boot"
-	espFs, swapFs := "fat32", "linux-swap"
+	espFs := "fat32"
+	// A PV partition carries the LV filesystem as its fs_type purely so parted can
+	// create it (archinstall 4.x requires a non-null fs_type per partition); the
+	// filesystem is never written, the partition is pvcreated.
+	pvFs := cfg.Disks.LVM.Filesystem
 	espPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(startOffset), Size: bytes(espBytes),
 		FsType: &espFs, Mountpoint: &boot,
 		MountOptions: []string{}, Flags: []string{"boot", "esp"}, Btrfs: []any{},
 	}
-	swapPart := Partition{
-		ObjID: newObjID(), Status: "create", Type: "primary",
-		Start: bytes(startOffset + espBytes), Size: bytes(swapBytes),
-		FsType: &swapFs, MountOptions: []string{}, Flags: []string{"swap"}, Btrfs: []any{},
-	}
 	disk1PVPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
-		Start: bytes(startOffset + espBytes + swapBytes), Size: bytes(pvOnDisk1),
-		FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+		Start: bytes(startOffset + espBytes), Size: bytes(pvOnDisk1),
+		FsType: &pvFs, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 	}
 
 	devices := []Device{{
 		Device: disk1, Wipe: true,
-		Partitions: []Partition{espPart, swapPart, disk1PVPart},
+		Partitions: []Partition{espPart, disk1PVPart},
 	}}
 
 	// Whole extra disks: one full-disk PV partition each.
@@ -255,7 +267,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		pv := Partition{
 			ObjID: newObjID(), Status: "create", Type: "primary",
 			Start: bytes(startOffset), Size: bytes(size),
-			FsType: nil, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+			FsType: &pvFs, MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
 		}
 		devices = append(devices, Device{Device: dev, Wipe: true, Partitions: []Partition{pv}})
 		pvObjIDs = append(pvObjIDs, pv.ObjID)
@@ -315,6 +327,11 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// ParseSize converts a human size string ("4GiB", "64G", "512MiB", "1024") to
+// bytes. Exposed so the install stage can size the post-install swapfile from
+// the same cfg.Disks.Swap.Size value, with identical (binary) unit semantics.
+func ParseSize(s string) (uint64, error) { return parseSize(s) }
 
 // parseSize converts a human size ("4GiB", "64G", "512MiB", "1024") to bytes.
 // go-units treats K/M/G/T as binary (1024-based), matching GiB disk semantics.
