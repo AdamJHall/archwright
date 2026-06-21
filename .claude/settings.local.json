@@ -1,17 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(rm -rf install.sh bootstrap.sh lib post stages)",
-      "Bash(rm -f README.md go/README.md)",
-      "Bash(mv go/main.go go/go.mod go/go.sum go/.goreleaser.yaml go/internal .)",
-      "Bash(rmdir go *)",
+      "Edit",
+      "Write",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git rev-parse *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
       "WebSearch",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Read(//tmp/**)",
       "Bash(gh api *)",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(i['path']\\) for i in d.get\\('items',[]\\)]\")",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['path']\\) for t in d['tree'] if 'device_model' in t['path'] or t['path'].endswith\\('lvm.py'\\)]\")",
-      "Bash(python -c \"import sys,json; [print\\(i['path']\\) for i in json.load\\(sys.stdin\\)]\")",
       "WebFetch(domain:api.github.com)",
       "Bash(go mod *)",
       "Bash(go build *)",
@@ -28,7 +28,6 @@
       "Bash(git push *)",
       "Bash(gh run *)",
       "Bash(python3 -c ' *)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('disk_config',{}\\), indent=1\\)\\); print\\('BOOTLOADER:', json.dumps\\(d.get\\('bootloader_config'\\) or d.get\\('bootloader'\\)\\)\\); print\\('ENC TOP:', 'disk_encryption' in d\\)\")",
       "Bash(bash -n test/vm.sh)"
     ]
   }
