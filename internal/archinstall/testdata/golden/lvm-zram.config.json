@@ -1,0 +1,132 @@
+{
+  "archinstall-language": "English",
+  "bootloader_config": {
+    "bootloader": "Grub",
+    "uki": false,
+    "removable": false
+  },
+  "kernels": [
+    "linux"
+  ],
+  "hostname": "arch-zram",
+  "packages": [
+    "base-devel",
+    "git",
+    "zsh",
+    "sudo",
+    "networkmanager",
+    "efibootmgr"
+  ],
+  "timezone": "Europe/London",
+  "ntp": true,
+  "swap": true,
+  "locale_config": {
+    "kb_layout": "uk",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_GB"
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "disk_config": {
+    "config_type": "manual_partitioning",
+    "device_modifications": [
+      {
+        "device": "/dev/nvme0n1",
+        "wipe": true,
+        "partitions": [
+          {
+            "obj_id": "objid-0001",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1048576,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 1073741824,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "fat32",
+            "mountpoint": "/boot",
+            "mount_options": [],
+            "flags": [
+              "boot",
+              "esp"
+            ],
+            "dev_path": null,
+            "btrfs": []
+          },
+          {
+            "obj_id": "objid-0002",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1074790400,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 273802067968,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "xfs",
+            "mountpoint": null,
+            "mount_options": [],
+            "flags": [],
+            "dev_path": null,
+            "btrfs": []
+          }
+        ]
+      }
+    ],
+    "lvm_config": {
+      "config_type": "default",
+      "vol_groups": [
+        {
+          "name": "vg0",
+          "lvm_pvs": [
+            "objid-0002"
+          ],
+          "volumes": [
+            {
+              "obj_id": "objid-0003",
+              "status": "create",
+              "name": "root",
+              "fs_type": "xfs",
+              "length": {
+                "value": 273793679360,
+                "unit": "B",
+                "sector_size": {
+                  "value": 512,
+                  "unit": "B"
+                }
+              },
+              "mountpoint": "/",
+              "mount_options": [],
+              "btrfs": []
+            }
+          ]
+        }
+      ]
+    },
+    "disk_encryption": null
+  },
+  "version": "4.3",
+  "config_version": "4.3"
+}
