@@ -49,7 +49,7 @@ archwright --version
 | Command     | Phase | Run as | What it does |
 |-------------|-------|--------|--------------|
 | `install`   | A     | root, from the Arch live ISO | (optional) pick mirrors with reflector; probe disk geometry; render an archinstall config (disk 1 = ESP+swap+LVM-PV partitions; extra disks = full-disk PVs; one VG→XFS root LV) + credentials; run `archinstall --silent`; then in the target chroot configure custom repos (e.g. CachyOS) + install custom kernels (replace stock, set GRUB default) and stage the binary+config for Phase B |
-| `bootstrap` | B     | your user, after reboot | yay, packages, flatpaks, AUR, Plymouth, GRUB theme, KDE customization, `chezmoi init --apply` |
+| `bootstrap` | B     | your user, after reboot | yay, packages, flatpaks, AUR, Plymouth, GRUB theme, KDE customization, `chezmoi init --apply`, then post-dotfiles `setup` (idempotent git clones + commands) |
 | `validate`  | —     | anyone | parse + validate `config.yaml`, change nothing |
 
 ### Flags
@@ -127,8 +127,18 @@ removes it in the chroot before reboot.
 
 This repo owns the **system**: disks, base OS, packages, boot splash, GRUB/KDE theming.
 User-level dotfiles (zsh, terminal, etc.) stay in
-[AdamJHall/dotfiles](https://github.com/AdamJHall/dotfiles) and are pulled in by the final
+[AdamJHall/dotfiles](https://github.com/AdamJHall/dotfiles) and are pulled in by the
 `chezmoi` step.
+
+Things the dotfiles *reference* but can't vendor — oh-my-zsh and its custom plugins, tmux's
+TPM, theme repos — are listed under `setup.steps` in `config.yaml` and run by the final
+`setup` stage (right after `chezmoi`, so the dotfiles' target dirs already exist).
+`setup.steps` is an **ordered** list; each entry is either a `clone` or a `command`, and
+they run top to bottom — so a clone that lands inside another clone's tree (e.g. the
+oh-my-zsh custom plugins, which need `~/.oh-my-zsh` cloned first) is sequenced just by where
+it appears. Each clone is idempotent: skipped if its `dest` already exists, or `git pull`ed
+when `update: true`, so the stage is safe to re-run. A `command` is the escape hatch for the
+occasional installer that isn't a git clone. See `config.example.yaml` for the full shape.
 
 ## Testing
 

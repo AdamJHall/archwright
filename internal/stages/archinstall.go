@@ -113,6 +113,12 @@ func postInstall(ctx *Context) error {
 		return err
 	}
 
+	if len(ctx.Cfg.System.Locales) > 0 {
+		if err := configureLocales(ctx, ctx.Cfg.System.Locales); err != nil {
+			return err
+		}
+	}
+
 	if len(ctx.Cfg.Repos) > 0 {
 		if err := configureRepos(ctx, ctx.Cfg.Repos); err != nil {
 			return err

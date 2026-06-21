@@ -1,8 +1,6 @@
 package stages
 
 import (
-	"os/exec"
-
 	"github.com/AdamJHall/archwright/internal/ui"
 )
 
@@ -23,10 +21,8 @@ func (flatpak) Run(ctx *Context) error {
 		return nil
 	}
 
-	if _, err := exec.LookPath("flatpak"); err != nil {
-		if err := ctx.R.Root("pacman", "-S", "--needed", "--noconfirm", "flatpak"); err != nil {
-			return err
-		}
+	if err := ensureTool(ctx, "flatpak", "flatpak"); err != nil {
+		return err
 	}
 
 	if err := ctx.R.Cmd("flatpak", "remote-add", "--if-not-exists", "flathub",

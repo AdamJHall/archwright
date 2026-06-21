@@ -24,8 +24,12 @@ type Config struct {
 	System struct {
 		Hostname string `yaml:"hostname" validate:"required,hostname_rfc1123"`
 		Timezone string `yaml:"timezone" validate:"required"`
-		Locale   string `yaml:"locale"   validate:"required"`
-		Keymap   string `yaml:"keymap"   validate:"required"`
+		Locale   string `yaml:"locale"   validate:"required"` // default LANG; enabled by the installer
+		// Locales are additional locales to enable in /etc/locale.gen (the default
+		// `locale` above is enabled automatically). Generated in Phase A's chroot so
+		// the system has e.g. both en_AU.UTF-8 (default) and en_US.UTF-8 on first boot.
+		Locales []string `yaml:"locales"`
+		Keymap  string   `yaml:"keymap" validate:"required"`
 	} `yaml:"system"`
 
 	User struct {
@@ -53,9 +57,14 @@ type Config struct {
 	Mirrors  MirrorConfig `yaml:"mirrors"`
 	Repos    []Repo       `yaml:"repos" validate:"dive"`
 	Packages []string     `yaml:"packages"`
-	Kernel   KernelConfig `yaml:"kernel"`
-	Flatpaks []string     `yaml:"flatpaks"`
-	AUR      []string     `yaml:"aur"`
+	// PacstrapExtra are packages added to archinstall's pacstrap (Phase A), so
+	// they are present on first boot — for things that must precede or be part of
+	// the initial system, e.g. microcode (intel-ucode/amd-ucode) which GRUB needs
+	// at config-generation time. Most software belongs in Packages (Phase B).
+	PacstrapExtra []string     `yaml:"pacstrap_extra"`
+	Kernel        KernelConfig `yaml:"kernel"`
+	Flatpaks      []string     `yaml:"flatpaks"`
+	AUR           []string     `yaml:"aur"`
 
 	Plymouth struct {
 		Theme string `yaml:"theme"`
@@ -80,6 +89,37 @@ type Config struct {
 	Chezmoi struct {
 		Repo string `yaml:"repo" validate:"omitempty,url"`
 	} `yaml:"chezmoi"`
+
+	Setup SetupConfig `yaml:"setup"`
+}
+
+// SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
+// applied the dotfiles. It covers the things a dotfiles repo references but can't
+// vendor itself — oh-my-zsh and its custom plugins, tmux's TPM, theme repos.
+//
+// Steps run strictly in the order written, so a clone that lands inside another
+// clone's tree (or a command that must precede a clone) is sequenced just by
+// where it appears in the list.
+type SetupConfig struct {
+	Steps []Step `yaml:"steps" validate:"dive"`
+}
+
+// Step is one setup action: exactly one of Clone or Command is set (enforced in
+// semanticErrors). Command is a shell snippet run via the runner; Clone is a git
+// clone. They share one list so they can be interleaved in any order.
+type Step struct {
+	Command string `yaml:"command"`
+	Clone   *Clone `yaml:"clone"`
+}
+
+// Clone is a git repo cloned into Dest (a path, `~` expanded to the user's home).
+// It is idempotent: skipped when Dest already exists, or `git pull`ed instead
+// when Update is set. Ref optionally checks out a branch or tag.
+type Clone struct {
+	URL    string `yaml:"url"    validate:"required,url"`
+	Dest   string `yaml:"dest"   validate:"required"`
+	Ref    string `yaml:"ref"`
+	Update bool   `yaml:"update"`
 }
 
 // Repo is a custom pacman repository. It is configured in Phase A's
@@ -123,17 +163,43 @@ type MirrorConfig struct {
 	Protocols []string `yaml:"protocols" validate:"dive,oneof=https http rsync ftp"` // --protocol
 }
 
-// Load reads and parses the YAML file at path.
+// Load reads, env-substitutes, and parses the YAML file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
+	expanded, err := expandEnv(data)
+	if err != nil {
+		return nil, err
+	}
 	var c Config
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := yaml.Unmarshal(expanded, &c); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &c, nil
+}
+
+// expandEnv substitutes ${VAR}/$VAR references in the raw config with the
+// process environment, so secrets and per-machine values can stay out of the
+// (gitignored) file. An unset variable is an error rather than a silent blank.
+// Write "$$" for a literal "$" (e.g. inside a shell snippet meant for runtime).
+func expandEnv(data []byte) ([]byte, error) {
+	var missing []string
+	out := os.Expand(string(data), func(name string) string {
+		if name == "$" { // os.Expand maps the "$" in "$$" through here
+			return "$"
+		}
+		if v, ok := os.LookupEnv(name); ok {
+			return v
+		}
+		missing = append(missing, name)
+		return ""
+	})
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
+	}
+	return []byte(out), nil
 }
 
 // Validate runs the struct-tag schema and returns every failure joined together,
@@ -162,6 +228,14 @@ func (c *Config) semanticErrors() []error {
 	}
 	if k.Default != "" && !slices.Contains(k.Packages, k.Default) {
 		errs = append(errs, fmt.Errorf("kernel.default %q must be one of kernel.packages", k.Default))
+	}
+	for i, s := range c.Setup.Steps {
+		switch {
+		case s.Command != "" && s.Clone != nil:
+			errs = append(errs, fmt.Errorf("setup.steps[%d] must set exactly one of command or clone, not both", i))
+		case s.Command == "" && s.Clone == nil:
+			errs = append(errs, fmt.Errorf("setup.steps[%d] must set either command or clone", i))
+		}
 	}
 	return errs
 }
