@@ -72,8 +72,13 @@ Add fields with their tags, then a table case in `config_test.go`.
   `archinstall.Build` computes "rest of disk"/"rest of VG" from probed `Geometry`
   (device→bytes). Whole-disk PVs become full-disk *partitioned* PVs (accepted deviation;
   archinstall can't do raw whole-disk PVs).
-- **No bubbletea/bubbles spinner** anywhere, deliberately — it would swallow streamed
-  pacstrap/yay output. The `Runner` streams stdout/stderr straight through.
+- **Output must flow through the viewport sink, never to `os.Stdout`/`os.Stderr` while
+  the TUI owns the screen.** In TUI mode (`internal/tui`) bubbletea takes the alt-screen, so
+  every byte — subprocess stdout/stderr *and* styled `ui` lines — is pumped into the viewport
+  via the `teaWriter` (set as `Runner.Out` and `ui.SetSink`). Plain mode (`--plain`, non-TTY,
+  CI, `--dry-run | less`) is the unchanged `os.Stderr` path and must stay byte-for-byte
+  identical. The TUI is skipped whenever a huh prompt would fire (interactive Phase A install)
+  since two bubbletea programs can't share the terminal — prompts run first, in plain mode.
 - **Phase A is destructive.** It erases the configured disks. `config.yaml` is gitignored.
   Every state-changing command is recorded into `.Plan` and printed under `--dry-run`
   without executing — always exercise `--dry-run` first.
