@@ -54,9 +54,12 @@ type Config struct {
 	// at config-generation time. Most software belongs in Packages (Phase B).
 	PacstrapExtra []string     `yaml:"pacstrap_extra"`
 	Kernel        KernelConfig `yaml:"kernel"`
-	Flatpaks      []string     `yaml:"flatpaks"`
-	// FlatpakRemotes are extra flatpak remotes registered (in addition to the
-	// always-added built-in flathub remote) before installing apps.
+	// Flatpaks lists apps to install, each as a "remote:appid" reference whose
+	// remote must be declared in FlatpakRemotes (enforced in semanticErrors).
+	Flatpaks []string `yaml:"flatpaks"`
+	// FlatpakRemotes is the COMPLETE set of flatpak remotes registered before
+	// installing apps — nothing is implicit. If you install from Flathub, list it
+	// here.
 	FlatpakRemotes []FlatpakRemote `yaml:"flatpak_remotes" validate:"dive"`
 	AUR            []string        `yaml:"aur"`
 	// AurHelper selects the AUR helper to install and use in Phase B. Empty
@@ -266,8 +269,9 @@ type Hook struct {
 	Dir    string            `yaml:"dir"`
 }
 
-// FlatpakRemote is an extra flatpak remote registered before installing apps.
-// The built-in "flathub" remote is always added; list others here.
+// FlatpakRemote is a flatpak remote registered before installing apps. The
+// flatpak_remotes list is complete — no remote (not even flathub) is added
+// implicitly, so every remote an app installs from must appear here.
 type FlatpakRemote struct {
 	Name string `yaml:"name" validate:"required"`
 	URL  string `yaml:"url"  validate:"required,url"`
@@ -438,6 +442,30 @@ func (c *Config) semanticErrors() []error {
 	errs = append(errs, c.diskErrors()...)
 	errs = append(errs, c.encryptionErrors()...)
 	errs = append(errs, c.lvmVolumeErrors()...)
+	errs = append(errs, c.flatpakErrors()...)
+	return errs
+}
+
+// flatpakErrors enforces the per-app remote rules struct tags can't express:
+// every flatpaks entry is a "remote:appid" reference (exactly one ":", both
+// halves non-empty) whose remote is declared in flatpak_remotes. This catches
+// typos and undeclared remotes at validate time, before anything runs.
+func (c *Config) flatpakErrors() []error {
+	var errs []error
+	declared := make(map[string]bool, len(c.FlatpakRemotes))
+	for _, rem := range c.FlatpakRemotes {
+		declared[rem.Name] = true
+	}
+	for i, app := range c.Flatpaks {
+		remote, appid, ok := strings.Cut(app, ":")
+		if !ok || remote == "" || appid == "" {
+			errs = append(errs, fmt.Errorf("flatpaks[%d] %q must be \"remote:appid\" (e.g. flathub:com.example.App)", i, app))
+			continue
+		}
+		if !declared[remote] {
+			errs = append(errs, fmt.Errorf("flatpaks[%d] remote %q is not declared in flatpak_remotes (add it there or fix the name)", i, remote))
+		}
+	}
 	return errs
 }
 

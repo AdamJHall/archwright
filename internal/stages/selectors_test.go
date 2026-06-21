@@ -88,15 +88,18 @@ func TestSelector_AurHelper(t *testing.T) {
 
 func TestSelector_FlatpakRemotes(t *testing.T) {
 	plan := planForCfg(t, Bootstrap, "flatpak", `
-flatpaks: [com.spotify.Client]
 flatpak_remotes:
+  - name: flathub
+    url: https://flathub.org/repo/flathub.flatpakrepo
   - name: flathub-beta
     url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo
+flatpaks: [flathub-beta:com.spotify.Client]
 `)
 	mustContain(t, plan,
-		// the built-in flathub remote is always added
+		// exactly the declared remotes — no remote is implicit
 		"flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
-		// plus the configured extra remote
 		"flatpak remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo",
+		// the app installs from its named remote
+		"flatpak install -y --noninteractive flathub-beta com.spotify.Client",
 	)
 }

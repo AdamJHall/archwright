@@ -44,7 +44,9 @@ kernel:
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true
-flatpaks: [com.spotify.Client]
+flatpak_remotes:
+  - { name: flathub, url: https://flathub.org/repo/flathub.flatpakrepo }
+flatpaks: [flathub:com.spotify.Client]
 aur: [1password]
 plymouth:
   theme: bgrt
@@ -247,6 +249,27 @@ func TestValidate_Errors(t *testing.T) {
 				"    - command: curl -sS https://starship.rs/install.sh | sh -s -- -y",
 				"    - command: echo hi\n      clone:\n        url: https://github.com/x/y\n        dest: ~/y", 1),
 			want: []string{"setup.steps[1] must set exactly one of command or clone, not both"},
+		},
+		// --- flatpak remote:appid validation (D2) ---
+		{
+			name: "flatpak missing remote prefix (no colon)",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [com.spotify.Client]", 1),
+			want: []string{`flatpaks[0] "com.spotify.Client" must be "remote:appid"`},
+		},
+		{
+			name: "flatpak empty appid half",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [flathub:]", 1),
+			want: []string{`flatpaks[0] "flathub:" must be "remote:appid"`},
+		},
+		{
+			name: "flatpak empty remote half",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [':com.spotify.Client']", 1),
+			want: []string{`must be "remote:appid"`},
+		},
+		{
+			name: "flatpak undeclared remote",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [bogus:com.spotify.Client]", 1),
+			want: []string{`flatpaks[0] remote "bogus" is not declared in flatpak_remotes`},
 		},
 	}
 
