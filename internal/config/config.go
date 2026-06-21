@@ -143,11 +143,14 @@ type Clone struct {
 
 // Hook is a user-defined command run at a named lifecycle point. Exactly one of
 // Run (an inline shell snippet) or Script (a path to a script file) is set.
+// Script and Dir have a leading `~` expanded to the user's home at run time.
+// Script existence is NOT checked at validate time: a hook script may be
+// produced by an earlier hook or stage in the same run.
 type Hook struct {
 	Name   string            `yaml:"name"`
 	At     string            `yaml:"at"     validate:"required,hookpoint"`
 	Run    string            `yaml:"run"    validate:"required_without=Script"`
-	Script string            `yaml:"script" validate:"omitempty,file"`
+	Script string            `yaml:"script" validate:"omitempty"`
 	Root   bool              `yaml:"root"` // run privileged (Root) vs unprivileged (Cmd/Shell)
 	Env    map[string]string `yaml:"env"`
 	Dir    string            `yaml:"dir"`
