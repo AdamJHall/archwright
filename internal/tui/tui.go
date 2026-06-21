@@ -45,8 +45,8 @@ var (
 // CLAUDE.md used to forbid).
 type model struct {
 	vp     viewport.Model
-	buf    strings.Builder // full scrollback
-	stage  string          // current stage header
+	buf    *strings.Builder // full scrollback; pointer so the Elm value-copy of
+	stage  string           // the model never copies a non-zero strings.Builder
 	done   bool
 	err    error
 	follow bool // auto-scroll to bottom unless the user scrolled up
@@ -56,7 +56,7 @@ type model struct {
 }
 
 // newModel returns the initial model. follow defaults to true (autoscroll on).
-func newModel() model { return model{follow: true} }
+func newModel() model { return model{follow: true, buf: &strings.Builder{}} }
 
 func (m model) Init() tea.Cmd { return nil }
 

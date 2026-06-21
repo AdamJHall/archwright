@@ -15,6 +15,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"time"
 
 	"github.com/AdamJHall/archwright/internal/config"
 	"github.com/AdamJHall/archwright/internal/run"
@@ -149,6 +151,32 @@ func runPhase(p stages.Phase) error {
 	return runStages(ctx, p, selected, func(s stages.Stage) { ui.Header(s.Order(), s.Name()) })
 }
 
+// cacheSudo validates the user's sudo credentials in normal terminal mode (so the
+// password prompt is shown before the TUI takes the alt-screen) and then keeps the
+// sudo timestamp warm with a periodic refresh, so a long bootstrap never re-prompts
+// mid-run. The returned func stops the keep-alive; call it when the phase ends.
+func cacheSudo() (stop func(), err error) {
+	c := exec.Command("sudo", "-v")
+	c.Stdin, c.Stdout, c.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := c.Run(); err != nil {
+		return nil, fmt.Errorf("caching sudo credentials before the TUI: %w", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(time.Minute) // well inside sudo's default 5-min timeout
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				_ = exec.Command("sudo", "-n", "-v").Run() // non-interactive refresh
+			}
+		}
+	}()
+	return func() { close(done) }, nil
+}
+
 // runStages executes the pre/before/after/post hook lifecycle around each stage.
 // onStage is invoked with each stage just before it runs (plain mode prints a
 // header banner; TUI mode updates the viewport header). It is the shared core of
@@ -182,6 +210,20 @@ func runStages(ctx *stages.Context, p stages.Phase, selected []stages.Stage, onS
 // flows through the viewport — nothing writes to os.Stdout while the TUI owns
 // the screen.
 func runPhaseTUI(ctx *stages.Context, p stages.Phase, selected []stages.Stage) error {
+	// The alt-screen TUI owns stdin, so an interactive prompt that fires inside it
+	// (notably sudo's password) cannot be answered and corrupts the view. Phase B
+	// runs every privileged command through sudo, so cache the credentials now —
+	// while the terminal is still in normal mode — and keep the timestamp warm for
+	// the duration of the run. All other Phase B commands are non-interactive
+	// (--noconfirm/-y/--noninteractive).
+	if p == stages.Bootstrap && ctx.R.Sudo && !ctx.R.DryRun {
+		stop, err := cacheSudo()
+		if err != nil {
+			return err
+		}
+		defer stop()
+	}
+
 	prog := tui.NewProgram()
 	ctx.R.Out = prog.Writer()
 	ui.SetSink(prog.Writer())

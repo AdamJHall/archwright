@@ -49,6 +49,20 @@ func TestUpdateOutputAppends(t *testing.T) {
 	}
 }
 
+// TestUpdateDoesNotCopyBuilder guards the regression where buf was a value
+// strings.Builder: bubbletea copies the model by value on every Update, and
+// using a non-zero Builder after a copy panics ("illegal use of non-zero
+// Builder copied by value"). Many sequential output updates must not panic.
+func TestUpdateDoesNotCopyBuilder(t *testing.T) {
+	m := sized(t, 80, 24)
+	for i := 0; i < 100; i++ {
+		m = step(t, m, outputMsg("line\n"))
+	}
+	if got := strings.Count(m.buf.String(), "line\n"); got != 100 {
+		t.Fatalf("buf had %d lines, want 100", got)
+	}
+}
+
 func TestOutputBeforeReadyBuffers(t *testing.T) {
 	// Output that arrives before the first WindowSizeMsg must still be retained
 	// and shown once the viewport becomes ready.
