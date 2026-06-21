@@ -385,12 +385,13 @@ checkout into `$HOME`; stow → punt to hooks.
 1. **Foundations:** shared helpers ✅, `strconv.Itoa` fix ✅, Runner
    `Env`/`Dir`/`Capture`/sink ✅, config env-var substitution ✅ (Wave 0, landed). Config
    acceptance is checked by real archinstall in the e2e run, not a unit test (see §3).
-2. **Headline extensibility:** hooks mechanism + `list-stages`/`--skip`/`stages.disable`.
+2. **Headline extensibility:** hooks mechanism ✅ + `list-stages`/`--skip`/`stages.disable` ✅
+   (Wave 1, landed).
 3. **Disk genericity:** layout-strategy refactor + fix the two deprecated archinstall
    shapes, then btrfs / swap / LUKS / systemd-boot as independent builders, each with a
    golden fixture.
-4. **Phase B selectors:** `desktop.environment`, `aur_helper`, flatpak remotes, decouple
-   cmdline from Plymouth.
+4. **Phase B selectors:** `desktop.environment` ✅, `aur_helper` ✅, flatpak remotes ✅
+   (Wave 1, landed); decouple cmdline from Plymouth (C3) still pending.
 
 Recurring theme: **prefer one good escape hatch (hooks + dotfiles repo) over many bespoke
 Go stages.**

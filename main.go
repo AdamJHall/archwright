@@ -1,11 +1,15 @@
 // Command archwright is the single-binary, declarative Arch Linux installer.
 //
-//	archwright install   [--dry-run] [--only <stage>] [--config <file>] [--yes]
-//	archwright bootstrap [--dry-run] [--only <stage>] [--config <file>]
-//	archwright validate  [--config <file>]
+//	archwright install     [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>] [--yes]
+//	archwright bootstrap   [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>]
+//	archwright validate    [--config <file>]
+//	archwright list-stages
 //
 // Phase A (install) runs from the Arch live ISO as root; Phase B (bootstrap)
 // runs on the booted system as your user. Stages live in internal/stages.
+// Stage selection: --only (single stage) wins; otherwise --skip and the
+// stages.disable config list subtract from the full set. User-defined hooks fire
+// at lifecycle points (pre/post-{install,bootstrap}, before:/after:<stage>).
 package main
 
 import (
