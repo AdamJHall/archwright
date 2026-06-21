@@ -5,6 +5,7 @@ package stages
 
 import (
 	"sort"
+	"strconv"
 
 	"github.com/AdamJHall/archwright/internal/config"
 	"github.com/AdamJHall/archwright/internal/run"
@@ -49,23 +50,11 @@ func For(p Phase, only string) []Stage {
 		if s.Phase() != p {
 			continue
 		}
-		if only != "" && only != s.Name() && only != itoa(s.Order()) {
+		if only != "" && only != s.Name() && only != strconv.Itoa(s.Order()) {
 			continue
 		}
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Order() < out[j].Order() })
 	return out
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }
