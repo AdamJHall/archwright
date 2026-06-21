@@ -96,6 +96,15 @@ type Partition struct {
 	Btrfs        []any    `json:"btrfs"`
 }
 
+// BtrfsSubvolume mirrors archinstall's SubvolumeModification.json(): a subvolume
+// name and the mountpoint it is mounted at. It populates Partition.Btrfs for the
+// btrfs layout. archinstall mounts each subvolume with subvol=<name>; compression
+// and other options come from the partition's mount_options.
+type BtrfsSubvolume struct {
+	Name       string  `json:"name"`
+	Mountpoint *string `json:"mountpoint"`
+}
+
 // Device mirrors DeviceModification.json().
 type Device struct {
 	Device     string      `json:"device"`
@@ -292,6 +301,11 @@ func selectBuilder(cfg *config.Config, espBytes uint64) (layoutBuilder, error) {
 			return nil, fmt.Errorf("disks.plain is required for the plain layout")
 		}
 		return &plainBuilder{esp: d.ESP, swap: d.Swap, plain: *d.Plain, espBytes: espBytes}, nil
+	case "btrfs":
+		if d.Btrfs == nil {
+			return nil, fmt.Errorf("disks.btrfs is required for the btrfs layout")
+		}
+		return &btrfsBuilder{esp: d.ESP, swap: d.Swap, btrfs: *d.Btrfs, espBytes: espBytes}, nil
 	default:
 		return nil, fmt.Errorf("unknown disks.layout %q", d.Layout)
 	}
@@ -460,6 +474,84 @@ func (b *plainBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error)
 		Start: bytes(offset), Size: bytes(rootBytes),
 		FsType: &rootFs, Mountpoint: &root,
 		MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+	})
+
+	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil, nil
+}
+
+// --- btrfs layout -----------------------------------------------------------
+
+// btrfsBuilder is a single btrfs root partition carrying subvolumes (the common
+// snapshot-friendly desktop layout). Only disk 1 is used. The root partition is
+// mounted at "/", and each configured subvolume is emitted in the partition's
+// Btrfs list so archinstall creates and mounts it. An optional swap partition
+// (sized from swap.size) precedes the root partition.
+//
+// Compression (e.g. "zstd") becomes a compress=<v> mount option on the root
+// partition. Snapper, when requested, is left to a post-install/hook step — this
+// builder only shapes the partition table and subvolume set.
+//
+// Swapfile-on-btrfs hazard: a swapfile on a compressed/CoW btrfs corrupts. We do
+// NOT emit a swapfile for btrfs; the supported on-disk swap for btrfs is a
+// dedicated swap *partition* (swap.type: partition). zram and none are also fine.
+type btrfsBuilder struct {
+	esp      config.ESPConfig
+	swap     config.SwapConfig
+	btrfs    config.BtrfsLayout
+	espBytes uint64
+}
+
+func (b *btrfsBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
+	disk1 := b.esp.Device
+	espBytes := b.espBytes
+
+	disk1Total, ok := geom[disk1]
+	if !ok || disk1Total == 0 {
+		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
+	}
+
+	parts := []Partition{espPartition(espBytes)}
+	offset := startOffset + espBytes
+
+	if b.swap.EffectiveType() == "partition" {
+		swapBytes, err := parseSize(b.swap.Size)
+		if err != nil {
+			return nil, nil, fmt.Errorf("swap size: %w", err)
+		}
+		swapFs := "linux-swap"
+		parts = append(parts, Partition{
+			ObjID: newObjID(), Status: "create", Type: "primary",
+			Start: bytes(offset), Size: bytes(swapBytes),
+			FsType: &swapFs, MountOptions: []string{}, Flags: []string{"swap"}, Btrfs: []any{},
+		})
+		offset += swapBytes
+	}
+
+	used := offset + endReserve
+	if disk1Total <= used {
+		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
+	}
+	rootBytes := roundDownMiB(disk1Total - used)
+
+	root := "/"
+	btrfsFs := "btrfs"
+	mountOpts := []string{}
+	if b.btrfs.Compress != "" {
+		mountOpts = append(mountOpts, "compress="+b.btrfs.Compress)
+	}
+
+	// Subvolumes: one entry per configured subvolume, in declared order.
+	subvols := make([]any, 0, len(b.btrfs.Subvolumes))
+	for _, sv := range b.btrfs.Subvolumes {
+		mp := sv.Mountpoint
+		subvols = append(subvols, BtrfsSubvolume{Name: sv.Name, Mountpoint: &mp})
+	}
+
+	parts = append(parts, Partition{
+		ObjID: newObjID(), Status: "create", Type: "primary",
+		Start: bytes(offset), Size: bytes(rootBytes),
+		FsType: &btrfsFs, Mountpoint: &root,
+		MountOptions: mountOpts, Flags: []string{}, Btrfs: subvols,
 	})
 
 	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil, nil

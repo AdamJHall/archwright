@@ -1,0 +1,118 @@
+{
+  "archinstall-language": "English",
+  "bootloader_config": {
+    "bootloader": "Grub",
+    "uki": false,
+    "removable": false
+  },
+  "kernels": [
+    "linux"
+  ],
+  "hostname": "arch-btrfs",
+  "packages": [
+    "base-devel",
+    "git",
+    "zsh",
+    "sudo",
+    "networkmanager",
+    "efibootmgr"
+  ],
+  "timezone": "Europe/London",
+  "ntp": true,
+  "swap": true,
+  "locale_config": {
+    "kb_layout": "uk",
+    "sys_enc": "UTF-8",
+    "sys_lang": "en_GB"
+  },
+  "network_config": {
+    "type": "nm"
+  },
+  "disk_config": {
+    "config_type": "manual_partitioning",
+    "device_modifications": [
+      {
+        "device": "/dev/nvme0n1",
+        "wipe": true,
+        "partitions": [
+          {
+            "obj_id": "objid-0001",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1048576,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 1073741824,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "fat32",
+            "mountpoint": "/boot",
+            "mount_options": [],
+            "flags": [
+              "boot",
+              "esp"
+            ],
+            "dev_path": null,
+            "btrfs": []
+          },
+          {
+            "obj_id": "objid-0002",
+            "status": "create",
+            "type": "primary",
+            "start": {
+              "value": 1074790400,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "size": {
+              "value": 273802067968,
+              "unit": "B",
+              "sector_size": {
+                "value": 512,
+                "unit": "B"
+              }
+            },
+            "fs_type": "btrfs",
+            "mountpoint": "/",
+            "mount_options": [
+              "compress=zstd"
+            ],
+            "flags": [],
+            "dev_path": null,
+            "btrfs": [
+              {
+                "name": "@",
+                "mountpoint": "/"
+              },
+              {
+                "name": "@home",
+                "mountpoint": "/home"
+              },
+              {
+                "name": "@log",
+                "mountpoint": "/var/log"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "lvm_config": null,
+    "disk_encryption": null
+  },
+  "version": "4.3",
+  "config_version": "4.3"
+}

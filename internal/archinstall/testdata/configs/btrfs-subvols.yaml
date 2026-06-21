@@ -1,0 +1,24 @@
+# Single NVMe disk: ESP + a btrfs root with @/@home/@log subvolumes, zstd
+# compression, and zram swap (no on-disk swap; a swapfile on btrfs corrupts).
+system:
+  hostname: arch-btrfs
+  timezone: Europe/London
+  locale: en_GB.UTF-8
+  keymap: uk
+user:
+  name: adam
+disks:
+  layout: btrfs
+  esp:
+    device: /dev/nvme0n1
+    size: 1GiB
+  swap:
+    type: zram
+  btrfs:
+    device: /dev/nvme0n1
+    compress: zstd
+    snapshots: snapper
+    subvolumes:
+      - {name: "@", mountpoint: /}
+      - {name: "@home", mountpoint: /home}
+      - {name: "@log", mountpoint: /var/log}
