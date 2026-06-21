@@ -2,6 +2,7 @@ package archinstall
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/AdamJHall/archwright/internal/config"
@@ -30,6 +31,7 @@ disks:
     filesystem: xfs
     pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 packages: [git, firefox]
+pacstrap_extra: [intel-ucode]
 `
 
 func testConfig(t *testing.T) *config.Config {
@@ -209,6 +211,22 @@ func TestBuild_Locale(t *testing.T) {
 	c, _, _ := Build(cfg, geom, "x")
 	if c.LocaleConfig.SysLang != "en_GB" || c.LocaleConfig.SysEnc != "UTF-8" || c.LocaleConfig.KbLayout != "uk" {
 		t.Errorf("locale wrong: %+v", c.LocaleConfig)
+	}
+}
+
+func TestBuild_PacstrapPackages(t *testing.T) {
+	cfg, geom := testConfig(t), testGeom()
+	c, _, _ := Build(cfg, geom, "x")
+	// The pacstrap list is the bootstrap minimum plus the configured extras.
+	if !slices.Contains(c.Packages, "base-devel") {
+		t.Errorf("pacstrap packages missing bootstrap default base-devel: %v", c.Packages)
+	}
+	if !slices.Contains(c.Packages, "intel-ucode") {
+		t.Errorf("pacstrap packages missing pacstrap_extra intel-ucode: %v", c.Packages)
+	}
+	// The shared bootstrapPackages default must not have been mutated.
+	if slices.Contains(bootstrapPackages, "intel-ucode") {
+		t.Error("bootstrapPackages default was mutated by Build")
 	}
 }
 

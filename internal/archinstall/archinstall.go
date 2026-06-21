@@ -297,12 +297,16 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	}
 
 	sysLang, sysEnc := splitLocale(cfg.System.Locale)
+	// Pacstrap list: the bootstrap minimum plus any user-requested extras (e.g.
+	// microcode). Built on a fresh slice so the package-level default is never
+	// mutated across Build calls.
+	pkgs := append(append([]string{}, bootstrapPackages...), cfg.PacstrapExtra...)
 	c := &Config{
 		Lang:       "English",
 		Bootloader: "Grub",
 		Kernels:    []string{"linux"},
 		Hostname:   cfg.System.Hostname,
-		Packages:   bootstrapPackages,
+		Packages:   pkgs,
 		Timezone:   cfg.System.Timezone,
 		Ntp:        true,
 		Swap:       false,

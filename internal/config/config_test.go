@@ -57,6 +57,12 @@ kde:
   look_and_feel: org.kde.breezedark.desktop
 chezmoi:
   repo: https://github.com/AdamJHall/dotfiles
+setup:
+  steps:
+    - clone:
+        url: https://github.com/tmux-plugins/tpm
+        dest: ~/.config/tmux/plugins/tpm
+    - command: curl -sS https://starship.rs/install.sh | sh -s -- -y
 `
 
 func load(t *testing.T, y string) *Config {
@@ -187,6 +193,28 @@ func TestValidate_Errors(t *testing.T) {
 			name: "bad reflector sort",
 			yaml: strings.Replace(validYAML, "sort: rate", "sort: bogus", 1),
 			want: []string{"mirrors.sort must be one of: rate age score delay country"},
+		},
+		{
+			name: "setup clone bad url",
+			yaml: strings.Replace(validYAML, "url: https://github.com/tmux-plugins/tpm", "url: not a url", 1),
+			want: []string{"setup.steps[0].clone.url must be a valid URL"},
+		},
+		{
+			name: "setup clone missing dest",
+			yaml: strings.Replace(validYAML, "        dest: ~/.config/tmux/plugins/tpm\n", "", 1),
+			want: []string{"setup.steps[0].clone.dest is required"},
+		},
+		{
+			name: "setup step with neither command nor clone",
+			yaml: strings.Replace(validYAML, "    - command: curl -sS https://starship.rs/install.sh | sh -s -- -y", "    - {}", 1),
+			want: []string{"setup.steps[1] must set either command or clone"},
+		},
+		{
+			name: "setup step with both command and clone",
+			yaml: strings.Replace(validYAML,
+				"    - command: curl -sS https://starship.rs/install.sh | sh -s -- -y",
+				"    - command: echo hi\n      clone:\n        url: https://github.com/x/y\n        dest: ~/y", 1),
+			want: []string{"setup.steps[1] must set exactly one of command or clone, not both"},
 		},
 	}
 

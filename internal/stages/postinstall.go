@@ -2,6 +2,7 @@ package stages
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/AdamJHall/archwright/internal/config"
 )
@@ -67,6 +68,24 @@ func pacmanConfEntry(r config.Repo) string {
 		"grep -q '^\\[%s\\]' /etc/pacman.conf || printf '%%s' '%s' >> /etc/pacman.conf",
 		r.Name, block,
 	)
+}
+
+// configureLocales enables additional locales in the target's /etc/locale.gen
+// and regenerates them. archinstall already enables + generates the default
+// locale (system.locale -> LANG); this adds the extras (system.locales) so the
+// installed system has them on first boot. Uncommenting is idempotent — the
+// matching `#en_US.UTF-8 UTF-8` line is stripped of its leading `#`.
+func configureLocales(ctx *Context, locales []string) error {
+	for _, l := range locales {
+		// Escape regex metacharacters in the locale (notably the '.' before the
+		// charset) so the sed anchor matches literally.
+		re := regexp.QuoteMeta(l)
+		script := fmt.Sprintf(`sed -i 's/^#\(%s\b\)/\1/' /etc/locale.gen`, re)
+		if err := chrootShell(ctx, script); err != nil {
+			return err
+		}
+	}
+	return chrootCmd(ctx, "locale-gen")
 }
 
 // installKernels installs the configured kernels in the target, optionally
