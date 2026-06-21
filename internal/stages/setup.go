@@ -12,7 +12,7 @@ import (
 // setup is the Phase B 85-setup stage: run the ordered list of setup steps that
 // install what a dotfiles repo references but can't vendor itself (oh-my-zsh and
 // its custom plugins, tmux's TPM, theme repos). Each step is a git clone or a
-// shell command; they execute in the order written. It runs after chezmoi (80)
+// shell command; they execute in the order written. It runs after dotfiles (80)
 // so the dotfiles dirs the clones target already exist.
 type setup struct{}
 
