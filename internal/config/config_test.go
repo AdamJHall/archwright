@@ -109,13 +109,45 @@ func TestLoad_EnvSubstitution(t *testing.T) {
 		}
 	})
 
-	t.Run("$$ is a literal dollar", func(t *testing.T) {
+	t.Run("$$ in a value is a literal dollar", func(t *testing.T) {
 		cfg, err := Load(write(t, "user:\n  name: a$$b\n"))
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
 		if cfg.User.Name != "a$b" {
 			t.Errorf("user.name = %q, want a$b", cfg.User.Name)
+		}
+	})
+
+	t.Run("$ in a comment does not error", func(t *testing.T) {
+		// A bare $ in a comment used to fail the run; now only values are scanned.
+		cfg, err := Load(write(t, "user:\n  name: adam # costs $5, uses $UNSET freely\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.User.Name != "adam" {
+			t.Errorf("user.name = %q, want adam", cfg.User.Name)
+		}
+	})
+
+	t.Run("${VAR} in a value expands", func(t *testing.T) {
+		t.Setenv("AW_HOST", "arch-box")
+		cfg, err := Load(write(t, "system:\n  hostname: ${AW_HOST}\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.System.Hostname != "arch-box" {
+			t.Errorf("system.hostname = %q, want arch-box", cfg.System.Hostname)
+		}
+	})
+
+	t.Run("unset var in a value still errors", func(t *testing.T) {
+		_, err := Load(write(t, "system:\n  hostname: ${AW_STILL_UNSET}\n"))
+		if err == nil {
+			t.Fatal("expected error for unset variable in value, got nil")
+		}
+		if !strings.Contains(err.Error(), "AW_STILL_UNSET") {
+			t.Errorf("error should name the missing var, got: %v", err)
 		}
 	})
 }
@@ -139,7 +171,7 @@ func TestValidate_Errors(t *testing.T) {
 				"system.hostname is required",
 				"user.name is required",
 				"disks.esp.device is required",
-				"disks.lvm.pvs must have at least 1 item(s)",
+				"disks.lvm is required when disks.layout is lvm",
 			},
 		},
 		{

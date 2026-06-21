@@ -42,21 +42,7 @@ type Config struct {
 		Disable []string `yaml:"disable"` // stage names to skip without emptying their config
 	} `yaml:"stages"`
 
-	Disks struct {
-		ESP struct {
-			Device string `yaml:"device" validate:"required,startswith=/dev/"`
-			Size   string `yaml:"size"   validate:"required,size"`
-		} `yaml:"esp"`
-		Swap struct {
-			Size string `yaml:"size" validate:"required,size"`
-		} `yaml:"swap"`
-		LVM struct {
-			VG         string   `yaml:"vg"         validate:"required"`
-			LV         string   `yaml:"lv"         validate:"required"`
-			Filesystem string   `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
-			PVs        []string `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
-		} `yaml:"lvm"`
-	} `yaml:"disks"`
+	Disks DisksConfig `yaml:"disks"`
 
 	Mirrors  MirrorConfig `yaml:"mirrors"`
 	Repos    []Repo       `yaml:"repos" validate:"dive"`
@@ -112,6 +98,93 @@ type Config struct {
 	Hooks []Hook `yaml:"hooks" validate:"dive"`
 }
 
+// DisksConfig describes the disk layout archinstall should create. Layout is a
+// discriminator selecting one of the layout strategies; the matching sub-block
+// (LVM/Btrfs/Plain) must be present. Layout defaults to "lvm" when empty so
+// pre-existing configs (which never set it) keep their original behaviour.
+//
+// Cross-field rules (the right sub-block present for the chosen layout, swap-type
+// constraints) live in semanticErrors(), not in struct tags, because they span
+// fields.
+type DisksConfig struct {
+	// Layout selects the partitioning strategy: "lvm" (ESP + LVM-on-partitions
+	// root), "btrfs" (ESP + single btrfs root with subvolumes), or "plain" (ESP +
+	// single ext4/xfs root). Empty defaults to "lvm".
+	Layout string `yaml:"layout" validate:"omitempty,oneof=lvm btrfs plain"`
+
+	ESP  ESPConfig  `yaml:"esp"`
+	Swap SwapConfig `yaml:"swap"`
+
+	LVM   *LVMLayout   `yaml:"lvm"`   // required when layout is lvm (or empty)
+	Btrfs *BtrfsLayout `yaml:"btrfs"` // required when layout is btrfs
+	Plain *PlainLayout `yaml:"plain"` // required when layout is plain
+}
+
+// EffectiveLayout returns the configured layout with the empty-default applied.
+func (d DisksConfig) EffectiveLayout() string {
+	if d.Layout == "" {
+		return "lvm"
+	}
+	return d.Layout
+}
+
+// ESPConfig is the EFI system partition created on disk 1.
+type ESPConfig struct {
+	Device string `yaml:"device" validate:"required,startswith=/dev/"`
+	Size   string `yaml:"size"   validate:"required,size"`
+}
+
+// SwapConfig selects how swap is provided. Type defaults to "swapfile" (the
+// original behaviour) when empty:
+//   - swapfile: a post-install /swapfile sized from Size (the only LVM-compatible
+//     option; archinstall 4.x can't format a raw swap partition in an LVM layout).
+//   - zram: compressed RAM swap (archinstall's own `swap` flag); no on-disk swap.
+//   - partition: a real linux-swap partition (only valid for plain/btrfs layouts).
+//   - none: no swap at all.
+type SwapConfig struct {
+	Type string `yaml:"type" validate:"omitempty,oneof=swapfile zram partition none"`
+	Size string `yaml:"size" validate:"omitempty,size"`
+}
+
+// EffectiveType returns the configured swap type with the empty-default applied.
+func (s SwapConfig) EffectiveType() string {
+	if s.Type == "" {
+		return "swapfile"
+	}
+	return s.Type
+}
+
+// LVMLayout is the classic ESP + LVM-on-partitions root (the historical default).
+type LVMLayout struct {
+	VG         string   `yaml:"vg"         validate:"required"`
+	LV         string   `yaml:"lv"         validate:"required"`
+	Filesystem string   `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
+	PVs        []string `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
+}
+
+// PlainLayout is a single root partition with no LVM: ESP + root on one disk.
+type PlainLayout struct {
+	Device     string `yaml:"device"     validate:"required,startswith=/dev/"`
+	Filesystem string `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
+}
+
+// BtrfsLayout is a single btrfs root partition carrying subvolumes (the common
+// snapshot-friendly desktop layout). Compress (e.g. "zstd" or "zstd:3") becomes a
+// compress= mount option; Snapshots selects an optional snapshot tool.
+type BtrfsLayout struct {
+	Device     string   `yaml:"device"     validate:"required,startswith=/dev/"`
+	Compress   string   `yaml:"compress"`
+	Snapshots  string   `yaml:"snapshots"  validate:"omitempty,oneof=snapper none"`
+	Subvolumes []Subvol `yaml:"subvolumes" validate:"dive"`
+}
+
+// Subvol is one btrfs subvolume and where it is mounted (e.g. {@, /} or
+// {@home, /home}).
+type Subvol struct {
+	Name       string `yaml:"name"       validate:"required"`
+	Mountpoint string `yaml:"mountpoint" validate:"required"`
+}
+
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
 // applied the dotfiles. It covers the things a dotfiles repo references but can't
 // vendor itself — oh-my-zsh and its custom plugins, tmux's TPM, theme repos.
@@ -143,11 +216,14 @@ type Clone struct {
 
 // Hook is a user-defined command run at a named lifecycle point. Exactly one of
 // Run (an inline shell snippet) or Script (a path to a script file) is set.
+// Script and Dir have a leading `~` expanded to the user's home at run time.
+// Script existence is NOT checked at validate time: a hook script may be
+// produced by an earlier hook or stage in the same run.
 type Hook struct {
 	Name   string            `yaml:"name"`
 	At     string            `yaml:"at"     validate:"required,hookpoint"`
 	Run    string            `yaml:"run"    validate:"required_without=Script"`
-	Script string            `yaml:"script" validate:"omitempty,file"`
+	Script string            `yaml:"script" validate:"omitempty"`
 	Root   bool              `yaml:"root"` // run privileged (Root) vs unprivileged (Cmd/Shell)
 	Env    map[string]string `yaml:"env"`
 	Dir    string            `yaml:"dir"`
@@ -207,37 +283,68 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
-	expanded, err := expandEnv(data)
-	if err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if err := expandEnv(&root); err != nil {
 		return nil, err
 	}
 	var c Config
-	if err := yaml.Unmarshal(expanded, &c); err != nil {
+	if err := root.Decode(&c); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &c, nil
 }
 
-// expandEnv substitutes ${VAR}/$VAR references in the raw config with the
-// process environment, so secrets and per-machine values can stay out of the
-// (gitignored) file. An unset variable is an error rather than a silent blank.
-// Write "$$" for a literal "$" (e.g. inside a shell snippet meant for runtime).
-func expandEnv(data []byte) ([]byte, error) {
+// expandEnv substitutes ${VAR}/$VAR references in the config's scalar VALUES
+// with the process environment, so secrets and per-machine values can stay out
+// of the (gitignored) file. It walks the parsed YAML node tree and expands only
+// value scalars — mapping keys and comments are left untouched, so a literal "$"
+// in a comment or key is harmless. An unset variable is an error rather than a
+// silent blank. Write "$$" for a literal "$" (e.g. inside a shell snippet meant
+// for runtime). Returns a joined error naming every missing variable.
+func expandEnv(n *yaml.Node) error {
 	var missing []string
-	out := os.Expand(string(data), func(name string) string {
-		if name == "$" { // os.Expand maps the "$" in "$$" through here
-			return "$"
-		}
-		if v, ok := os.LookupEnv(name); ok {
-			return v
-		}
-		missing = append(missing, name)
-		return ""
+	walkValues(n, func(v *yaml.Node) {
+		v.Value = os.Expand(v.Value, func(name string) string {
+			if name == "$" { // os.Expand maps the "$" in "$$" through here
+				return "$"
+			}
+			if val, ok := os.LookupEnv(name); ok {
+				return val
+			}
+			missing = append(missing, name)
+			return ""
+		})
 	})
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
+		return fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
 	}
-	return []byte(out), nil
+	return nil
+}
+
+// walkValues invokes fn on every scalar VALUE node reachable from n, skipping
+// mapping key nodes (so keys are never substituted). Document, sequence and
+// alias nodes are traversed transparently; anchors carry their (already-walked)
+// value through aliases, so an alias is left untouched to avoid double-expansion.
+func walkValues(n *yaml.Node, fn func(*yaml.Node)) {
+	if n == nil {
+		return
+	}
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			walkValues(c, fn)
+		}
+	case yaml.MappingNode:
+		// Content is [key0, val0, key1, val1, ...]; recurse into values only.
+		for i := 1; i < len(n.Content); i += 2 {
+			walkValues(n.Content[i], fn)
+		}
+	case yaml.ScalarNode:
+		fn(n)
+	}
 }
 
 // Validate runs the struct-tag schema and returns every failure joined together,
@@ -274,6 +381,41 @@ func (c *Config) semanticErrors() []error {
 		case s.Command == "" && s.Clone == nil:
 			errs = append(errs, fmt.Errorf("setup.steps[%d] must set either command or clone", i))
 		}
+	}
+	errs = append(errs, c.diskErrors()...)
+	return errs
+}
+
+// diskErrors covers the cross-field disk rules struct tags can't express: the
+// sub-block matching the chosen layout must be present (and unrelated ones absent
+// is tolerated but the matching one is required), and a swap partition is only
+// valid for partition-based layouts (not LVM).
+func (c *Config) diskErrors() []error {
+	var errs []error
+	d := c.Disks
+	switch d.EffectiveLayout() {
+	case "lvm":
+		if d.LVM == nil {
+			errs = append(errs, fmt.Errorf("disks.lvm is required when disks.layout is lvm"))
+		}
+	case "btrfs":
+		if d.Btrfs == nil {
+			errs = append(errs, fmt.Errorf("disks.btrfs is required when disks.layout is btrfs"))
+		}
+	case "plain":
+		if d.Plain == nil {
+			errs = append(errs, fmt.Errorf("disks.plain is required when disks.layout is plain"))
+		}
+	}
+
+	switch d.Swap.EffectiveType() {
+	case "swapfile", "partition":
+		if d.Swap.Size == "" {
+			errs = append(errs, fmt.Errorf("disks.swap.size is required when disks.swap.type is %s", d.Swap.EffectiveType()))
+		}
+	}
+	if d.Swap.EffectiveType() == "partition" && d.EffectiveLayout() == "lvm" {
+		errs = append(errs, fmt.Errorf("disks.swap.type partition is not supported with the lvm layout (use swapfile or zram)"))
 	}
 	return errs
 }

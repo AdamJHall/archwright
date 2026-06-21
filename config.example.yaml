@@ -5,8 +5,9 @@
 #
 # Any value may reference an environment variable using dollar-brace VAR syntax;
 # it is substituted from the environment when the config is loaded (an unset
-# variable is an error, and a doubled dollar sign is a literal one). Keeps secrets
-# and per-machine values out of the file.
+# variable is an error, and a doubled dollar sign is a literal one). Only values
+# are expanded — keys and comments are left untouched, so a literal `$` in a
+# comment is fine. Keeps secrets and per-machine values out of the file.
 
 system:
   hostname: arch-box
@@ -30,23 +31,36 @@ user:
 #   disable: [plymouth, grub-theme]
 
 # --- disk layout ------------------------------------------------------------
-# Disk 1 (the `esp.device`) is partitioned: ESP + remainder-as-LVM-PV. Any other
-# PVs listed are consumed as a single full-disk partition. All PVs become one
-# volume group -> one logical volume -> one filesystem mounted at /. Swap is a
-# /swapfile of `swap.size` created on the root filesystem post-install (archinstall
-# 4.x can't format a raw swap partition in an LVM layout), so there is no swap
-# partition. (Phase A renders this into an archinstall config and runs archinstall.)
+# `layout` selects the partitioning strategy (default: lvm when omitted, so older
+# configs keep working). Exactly the matching sub-block must be present.
+# (Phase A renders this into an archinstall config and runs archinstall.)
+#
+#   lvm    ESP + one LVM volume group across the listed PVs -> root mounted at /
+#   btrfs  ESP + a single btrfs root carrying subvolumes (snapshot-friendly)
+#   plain  ESP + a single ext4/xfs root partition, no LVM
+#
+# `swap.type` (default: swapfile):
+#   swapfile   post-install /swapfile of `swap.size` (the only LVM-compatible option;
+#              archinstall 4.x can't format a raw swap partition in an LVM layout)
+#   zram       compressed RAM swap (archinstall's own zram); no on-disk swap, `size` ignored
+#   partition  a real linux-swap partition (only valid for plain/btrfs layouts)
+#   none       no swap
+#
+# LVM example below. Disk 1 (the `esp.device`) is partitioned ESP + remainder-as-PV;
+# any other PVs listed are consumed as a single full-disk partition.
 #
 #   nvme0n1p1  <esp.size>   FAT32  -> /boot (EFI System Partition)
 #   nvme0n1p2  remainder    LVM PV
 #   sda        whole disk   LVM PV
 #   sdb        whole disk   LVM PV
 disks:
+  layout: lvm                   # lvm (default) | btrfs | plain
   esp:
     device: /dev/sda
     size: 4GiB
   swap:
-    size: 4GiB                  # /swapfile size (match RAM for hibernation)
+    type: swapfile              # swapfile (default) | zram | partition | none
+    size: 4GiB                  # used by swapfile/partition; match RAM for hibernation
   lvm:
     vg: vg0
     lv: root
@@ -55,6 +69,23 @@ disks:
       - /dev/sda2            # remainder disk with the partition of the ESP device
       - /dev/sdb             # whole second disk
       - /dev/sdc             # whole second disk
+
+  # --- btrfs alternative (set layout: btrfs) ---
+  # On btrfs, prefer swap.type zram or partition — a swapfile needs a dedicated
+  # nocow/no-compress subvolume, so it is not emitted for this layout.
+  # btrfs:
+  #   device: /dev/nvme0n1     # the single disk holding the btrfs root
+  #   compress: zstd           # -> compress=zstd mount option (e.g. zstd or zstd:3)
+  #   snapshots: snapper       # snapper | none (snapper setup itself is left to a hook)
+  #   subvolumes:
+  #     - { name: "@",     mountpoint: / }
+  #     - { name: "@home", mountpoint: /home }
+  #     - { name: "@log",  mountpoint: /var/log }
+
+  # --- plain alternative (set layout: plain) ---
+  # plain:
+  #   device: /dev/nvme0n1     # single disk: ESP + one root partition, no LVM
+  #   filesystem: ext4         # ext4 | xfs
 
 # --- mirrors ----------------------------------------------------------------
 # Optional: run reflector in the live ISO before archinstall, so pacstrap (and
@@ -213,7 +244,9 @@ setup:
 #     run: systemctl enable --now bluetooth
 #   - name: provision
 #     at: post-bootstrap
-#     script: /opt/provision.sh    # an existing file path (validated; ~ is not expanded)
-#     dir: /tmp                     # working directory (absolute; ~ is not expanded)
+#     script: ~/bin/provision.sh   # path to a script; `~` expands to $HOME. Existence is
+#                                  # NOT checked at validate time (an earlier hook/stage may
+#                                  # create it), so a missing path fails only when it runs.
+#     dir: ~/work                   # working directory; `~` expands to $HOME
 #     env:
 #       PROFILE: desktop

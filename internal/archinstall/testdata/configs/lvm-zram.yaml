@@ -1,0 +1,20 @@
+# Single NVMe LVM disk using zram swap instead of a /swapfile: archinstall's own
+# swap flag is set (swap: true) and no on-disk swap is created.
+system:
+  hostname: arch-zram
+  timezone: Europe/London
+  locale: en_GB.UTF-8
+  keymap: uk
+user:
+  name: adam
+disks:
+  esp:
+    device: /dev/nvme0n1
+    size: 1GiB
+  swap:
+    type: zram
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: xfs
+    pvs: [/dev/nvme0n1p2]

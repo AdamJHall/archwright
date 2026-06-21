@@ -13,8 +13,9 @@ import (
 )
 
 // hooksConfig builds a validated *config.Config from a self-contained YAML
-// snippet that carries hooks at several lifecycle points. scriptPath is a real
-// file (the `file` validator on Hook.Script requires one to exist).
+// snippet that carries hooks at several lifecycle points. scriptPath need not
+// exist (Hook.Script existence is no longer validated); these tests pass a real
+// file anyway so the recorded plan is realistic.
 func hooksConfig(t *testing.T, scriptPath string) *config.Config {
 	t.Helper()
 	y := fmt.Sprintf(`

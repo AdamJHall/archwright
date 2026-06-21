@@ -263,17 +263,17 @@ type SwapConfig struct {
 - **BIOS/MBR** — UEFI is hard-required (`preflight.go:25`); high effort for hardware you
   probably don't have. Hold the line.
 
-| # | Change | Value | Cost |
-|---|--------|-------|------|
-| A3-test | Validate rendered config via real archinstall in the e2e run (vendored `schema.json` is stale — unusable) | **HIGH** | LOW-MED |
-| A1 | Layout-strategy interface; de-special-case `Build` | **HIGH** | MED |
-| A2 | btrfs + subvolumes | **HIGH** | MED |
-| A4b | Canonical `bootloader_config` + nested-only encryption | **HIGH** | LOW |
-| A3 | LUKS (`lvm_on_luks`) | MED-HIGH | MED |
-| A5 | Swap options (zram/partition/none) | MED | LOW |
-| A4 | systemd-boot | MED | LOW-MED |
-| A6 | separate /home, NTP, plain layout | MED | LOW-MED |
-| — | ZFS, BIOS/MBR, multi-user | LOW | skip/defer |
+| # | Change | Value | Cost | Status |
+|---|--------|-------|------|--------|
+| A3-test | Validate rendered config via real archinstall in the e2e run (vendored `schema.json` is stale — unusable) | **HIGH** | LOW-MED | deferred (e2e) |
+| A1 | Layout-strategy interface; de-special-case `Build` | **HIGH** | MED | ✅ Wave 2 |
+| A2 | btrfs + subvolumes | **HIGH** | MED | ✅ Wave 2 |
+| A4b | Canonical `bootloader_config` + nested-only encryption | **HIGH** | LOW | ✅ Wave 2 |
+| A3 | LUKS (`lvm_on_luks`) | MED-HIGH | MED | pending |
+| A5 | Swap options (zram/partition/none) | MED | LOW | ✅ Wave 2 |
+| A4 | systemd-boot | MED | LOW-MED | pending |
+| A6 | separate /home, NTP; plain layout ✅ (Wave 2) | MED | LOW-MED | partial |
+| — | ZFS, BIOS/MBR, multi-user | LOW | skip/defer | — |
 
 ---
 
@@ -369,14 +369,14 @@ systemd-boot (no theming) via its existing `case "none"` pattern.
 idempotency (`chezmoi.go:35-49`). yadm is near-identical; bare-git is `clone --bare` +
 checkout into `$HOME`; stow → punt to hooks.
 
-| # | Change | Value | Cost |
-|---|--------|-------|------|
-| Cross-1 | Shared helpers | HIGH | LOW |
-| C1 | `desktop.environment` selector | HIGH | MED |
-| C2a | `aur_helper: yay\|paru` | MED | LOW |
-| C2b | Flatpak remotes | MED | LOW |
-| C3 | Decouple cmdline edit from Plymouth | MED | LOW-MED |
-| C4 | `dotfiles.manager` selector | LOW-MED | LOW |
+| # | Change | Value | Cost | Status |
+|---|--------|-------|------|--------|
+| Cross-1 | Shared helpers | HIGH | LOW | ✅ Wave 0 |
+| C1 | `desktop.environment` selector | HIGH | MED | ✅ Wave 1 |
+| C2a | `aur_helper: yay\|paru` | MED | LOW | ✅ Wave 1 |
+| C2b | Flatpak remotes | MED | LOW | ✅ Wave 1 |
+| C3 | Decouple cmdline edit from Plymouth | MED | LOW-MED | ✅ Wave 2 |
+| C4 | `dotfiles.manager` selector | LOW-MED | LOW | pending |
 
 ---
 
@@ -387,15 +387,23 @@ checkout into `$HOME`; stow → punt to hooks.
    acceptance is checked by real archinstall in the e2e run, not a unit test (see §3).
 2. **Headline extensibility:** hooks mechanism ✅ + `list-stages`/`--skip`/`stages.disable` ✅
    (Wave 1, landed).
-3. **Disk genericity:** layout-strategy refactor + fix the two deprecated archinstall
-   shapes, then btrfs / swap / LUKS / systemd-boot as independent builders, each with a
-   golden fixture.
+3. **Disk genericity:** layout-strategy refactor ✅ + fix the two deprecated archinstall
+   shapes (A4b) ✅, then btrfs ✅ / swap ✅ as independent builders, each with a golden
+   fixture (Wave 2, landed). LUKS (A3) and systemd-boot (A4) still pending.
 4. **Phase B selectors:** `desktop.environment` ✅, `aur_helper` ✅, flatpak remotes ✅
-   (Wave 1, landed); decouple cmdline from Plymouth (C3) still pending.
+   (Wave 1, landed); decouple cmdline from Plymouth (C3) ✅ (Wave 2, landed).
 
-**Next wave starts here:** before any new feature work, land the three correctness
-follow-ups from the Wave 1 retrospective below — hooks `~`-expansion + the `script` `file`
-check, value-only env-substitution, and C3 — each with a test.
+**Wave 2 landed** the three Wave 1 correctness follow-ups (value-only env-substitution,
+hooks `~`-expansion + dropping the eager `script` `file` check, and C3) plus the disk
+genericity headline (A1 layout-strategy refactor, A4b canonical `bootloader_config` +
+nested-only encryption, A2 btrfs+subvolumes, A5 swap options). See the Wave 2 retrospective
+below.
+
+**Next wave starts here:** LUKS (A3, VM-validate the >2-partition limit), systemd-boot (A4,
+branch the C3 helper), A6 leftovers (separate `/home`, NTP toggle), and the still-deferred
+TUI conversion / remote-layered-config items. Plus the VM-validation caveats from Wave 2
+(see the retrospective) — confirm the reverse-engineered `bootloader_config` and btrfs
+subvolume JSON shapes against a real archinstall 4.3 run before trusting them on hardware.
 
 Recurring theme: **prefer one good escape hatch (hooks + dotfiles repo) over many bespoke
 Go stages.**
@@ -445,6 +453,57 @@ the next wave, before new feature work, and cover each with a test:
 `.claude/settings.local.json` is tracked on `main` — machine-local editor/agent settings
 that should be gitignored. Wave 1 deliberately left it as-is; a separate cleanup PR should
 `git rm --cached` it and add the `.gitignore` entry.
+
+---
+
+## Wave 2 retrospective — notes for the next agent
+
+Wave 2 (the three Wave 1 correctness follow-ups + disk genericity) was again built by **three
+parallel worktree agents** merged into one branch. What landed and what to watch:
+
+### What landed
+- **Correctness follow-ups:** value-only env-substitution (walks the `yaml.Node` tree and
+  expands only scalar VALUE nodes, so a `$` in a comment or key no longer errors; `$$`→`$`
+  and unset-var-errors preserved); hooks now `~`-expand `script`/`dir` via the existing
+  `expandHome`, and the eager `script` `file` existence check was dropped (a hook script may
+  be produced by an earlier step in the same run).
+- **Disk genericity:** A1 layout-strategy refactor (`Disks.Layout` discriminator →
+  `layoutBuilder` interface; `lvmBuilder` + new `plainBuilder`; empty layout still defaults
+  to `lvm` so existing goldens were byte-unchanged after the refactor), A4b (canonical
+  `bootloader_config` object + nested-only `disk_encryption`), A2 (btrfs + subvolumes via a
+  `btrfsBuilder`, populating the long-dormant `Partition.Btrfs` field), A5 (swap `type`:
+  swapfile/zram/partition/none, swapfile still the default).
+
+### Process that worked (reuse it)
+- **The Wave 1 partition rules held.** Three agents, distinct file/region ownership, new
+  test files only — and `git merge` auto-resolved every overlap, including two agents both
+  editing `config.go` (disjoint regions: the `Disks` block vs. `expandEnv`/`Load`/`Hook`)
+  and both touching `config_test.go`. **Zero hand-merges this wave.** The "distinct anchor in
+  the shared hotspot" rule is the load-bearing one — keep it.
+- **Behaviour-preserving refactors gated on the golden snapshot.** A1 was committed
+  separately and proven by running `TestRenderGolden` *without* `-update` (goldens unchanged);
+  A4b then regenerated them so its diff was purely the bootloader/encryption shape change.
+  Doing the refactor and the shape change as separate commits made the intended-vs-incidental
+  golden diff trivially reviewable. Keep this two-commit discipline for schema changes.
+
+### Harness gotcha (cost us a retry)
+- **Pre-created external worktrees were unreachable.** Manually `git worktree add`-ing dirs
+  *outside* the repo root and pointing agents at them failed: the agent sandbox confines tool
+  calls to the session's working directory, so every Read/Write/Bash against the external
+  path was denied, and `EnterWorktree` refuses to switch from the repo root. The fix that
+  works is the Agent tool's built-in `isolation: "worktree"`, which roots each agent in its
+  own worktree under `.claude/worktrees/` (inside the sandbox). Don't hand-roll worktrees for
+  subagents — let the harness create them.
+
+### VM-validation caveats (do before trusting on hardware)
+Per `CLAUDE.md`'s archinstall-drift rule, these Wave 2 shapes are reverse-engineered and
+**must be validated against a real archinstall 4.3 run** (the e2e/A3-test item):
+- `bootloader_config: {bootloader, uki, removable}` field names/casing;
+- btrfs subvolume JSON (`{name, mountpoint}`) — archinstall may want extra keys (per-subvol
+  compression, `nodatacow`), and `disk_config.btrfs_options` was intentionally *not* emitted;
+- the swap `partition` shape (`fs_type: linux-swap`, flag `swap`).
+Snapper (`btrfs.snapshots: snapper`) is validated and carried in config but not yet wired to
+an actual post-install snapper setup — that belongs in a hook/stage in a later wave.
 
 ---
 

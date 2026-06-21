@@ -8,7 +8,7 @@
   "kernels": [
     "linux"
   ],
-  "hostname": "arch-ext4",
+  "hostname": "arch-zram",
   "packages": [
     "base-devel",
     "git",
@@ -17,13 +17,13 @@
     "networkmanager",
     "efibootmgr"
   ],
-  "timezone": "America/New_York",
+  "timezone": "Europe/London",
   "ntp": true,
-  "swap": false,
+  "swap": true,
   "locale_config": {
-    "kb_layout": "us",
+    "kb_layout": "uk",
     "sys_enc": "UTF-8",
-    "sys_lang": "en_US"
+    "sys_lang": "en_GB"
   },
   "network_config": {
     "type": "nm"
@@ -32,7 +32,7 @@
     "config_type": "manual_partitioning",
     "device_modifications": [
       {
-        "device": "/dev/sda",
+        "device": "/dev/nvme0n1",
         "wipe": true,
         "partitions": [
           {
@@ -48,7 +48,7 @@
               }
             },
             "size": {
-              "value": 536870912,
+              "value": 1073741824,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -70,7 +70,7 @@
             "status": "create",
             "type": "primary",
             "start": {
-              "value": 537919488,
+              "value": 1074790400,
               "unit": "B",
               "sector_size": {
                 "value": 512,
@@ -78,14 +78,14 @@
               }
             },
             "size": {
-              "value": 68180508672,
+              "value": 273802067968,
               "unit": "B",
               "sector_size": {
                 "value": 512,
                 "unit": "B"
               }
             },
-            "fs_type": "ext4",
+            "fs_type": "xfs",
             "mountpoint": null,
             "mount_options": [],
             "flags": [],
@@ -99,7 +99,7 @@
       "config_type": "default",
       "vol_groups": [
         {
-          "name": "system",
+          "name": "vg0",
           "lvm_pvs": [
             "objid-0002"
           ],
@@ -108,9 +108,9 @@
               "obj_id": "objid-0003",
               "status": "create",
               "name": "root",
-              "fs_type": "ext4",
+              "fs_type": "xfs",
               "length": {
-                "value": 68172120064,
+                "value": 273793679360,
                 "unit": "B",
                 "sector_size": {
                   "value": 512,
