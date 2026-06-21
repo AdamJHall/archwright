@@ -35,7 +35,8 @@ main.go                 cobra CLI: install / bootstrap / validate + persistent f
 internal/config/        Config struct; Validate() via go-playground/validator struct tags
 internal/archinstall/   render config.yaml -> archinstall config + creds JSON (Phase A core)
 internal/run/           Runner: Cmd/Shell/Chroot/Root/Try, dry-run, recorded .Plan
-internal/ui/            charmbracelet log + lipgloss styling + huh confirm prompts
+internal/ui/            stderr-bound lipgloss renderer (TTY/NO_COLOR aware) + log +
+                        huh prompts; run banner/[i/n] stage headers/timing/summary
 internal/stages/        one file per stage; self-registering ordered registry
 ```
 
