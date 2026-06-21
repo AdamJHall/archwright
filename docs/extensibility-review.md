@@ -408,15 +408,25 @@ helpers and `installKernels`), and A6 (multiple LVM volumes for a separate `/hom
 `system.ntp` toggle), and C4 (`dotfiles.manager`: chezmoi/yadm/bare-git/none). See the Wave 3
 retrospective below.
 
-**Next wave starts here:** the still-deferred TUI conversion and remote/layered-config items
-(both big, both documented in their own sections below), plus snapper wiring for
-`btrfs.snapshots: snapper` (carried in config since Wave 2 but not yet provisioned).
+**Wave 4 landed** the TUI conversion (✅ scrollable bubbletea viewport behind `--plain`,
+output routed through a swappable `ui` sink + `teaWriter` pump), snapper provisioning
+(✅ `internal/stages/snapper.go`, Order 25, no-op unless `btrfs` + `snapshots: snapper`),
+the `--from`/`--to` stage-resume window (✅ `stages.Within` post-filter), and the
+declarative-install trio from `docs/declarative-installs.md`: D1 explicit `pacstrap`
+(✅ replaces `pacstrap_extra` + the in-code base set; advisory preflight warnings), D2
+explicit `flatpak_remotes` + per-app `remote:appid` (✅ no implicit Flathub), and D3
+explicit `kernel.base` (✅ replaces hardcoded `Kernels: [linux]`). See the Wave 4
+retrospective below.
+
+**Next wave starts here:** the still-deferred **remote/layered-config** item (big, documented
+in its own section below; explicitly deferred until >1 machine is actually managed).
 Everything new since Wave 1 carries **VM-validation caveats** — confirm the
 reverse-engineered shapes against a real archinstall 4.3 run before trusting on hardware:
 the Wave 2 `bootloader_config`/btrfs-subvolume JSON, and the Wave 3 `disk_encryption`
 obj_id wiring + `encryption_password` casing, the `lvm_on_luks` >2-partition limit, the
-systemd-boot loader-entry default + `bootctl update` cmdline-refresh paths, and the
-multi-volume LVM "rest of VG" sizing.
+systemd-boot loader-entry default + `bootctl update` cmdline-refresh paths, the
+multi-volume LVM "rest of VG" sizing, and the Wave 4 snapper timer-unit / `set-config`
+key names (`snapper-timeline.timer`, `snapper-cleanup.timer`, `TIMELINE_LIMIT_*`).
 
 Recurring theme: **prefer one good escape hatch (hooks + dotfiles repo) over many bespoke
 Go stages.**
@@ -578,6 +588,43 @@ Per `CLAUDE.md`'s archinstall-drift rule, these Wave 3 shapes are reverse-engine
   (`*linux-<pkg>*.conf` vs a machine-id-prefixed name), and whether `bootctl update` actually
   propagates a `/etc/kernel/cmdline` change (it may be a kernel-install-hook no-op);
 - multi-volume LVM "rest of VG" sizing (fixed volumes summed + per-PV headroom subtracted).
+
+---
+
+## Wave 4 retrospective — notes for the next agent
+
+Wave 4 was built by **six parallel worktree agents** (A TUI, B snapper, C `--from`/`--to`,
+plus D1/D2/D3 from `docs/declarative-installs.md`) merged into one branch, each TDD with
+the `golang-patterns`/`golang-testing` skills. Largest fan-out so far; what worked and what
+to watch:
+
+- **File-ownership partitioning held** for the disjoint work (A's `internal/tui/*`, B's two
+  new files, C's `stages.Within`). main.go's A↔C contention **auto-merged** because A
+  deliberately left the `stages.Select(...)` line + empty-check intact and C inserted its
+  one filter line right after — the handoff's "keep the shared line stable" rule paid off.
+- **The real merge cost was the declarative trio sharing required-field fixtures.** D1
+  (`pacstrap` now `required,min=1`) and D3 (`kernel.base` now `required,min=1`) each added a
+  line to the *same anchor* in ~15 inline-YAML fixtures, so every one conflicted. Resolution
+  was a mechanical union (keep both lines) **except** `archinstall_test.go`, where the
+  "theirs" side still carried the old `pacstrap_extra` key D1 had turned into a hard error —
+  a blind union would have kept both `pacstrap:` and the now-illegal `pacstrap_extra:`.
+  **Lesson:** when two agents both make a field `required`, expect a conflict in *every*
+  shared fixture, and check each "theirs" hunk for content the *other* agent deleted.
+- **Cross-agent registry coupling:** B's new snapper stage (Order 25) landed *after* C and
+  the `TestRegistry`/`TestWithin` expectations were written against the registry without it,
+  so the orchestrator centrally inserted `snapper`/`25` into those expected slices (the
+  documented "unowned file affected by a feature — agent reports, orchestrator fixes" case).
+- **Semantic follow-up the agents flagged and the orchestrator wired:** D1's preflight
+  "no kernel" advisory was conditioned only on `kernel.packages` (since `kernel.base` didn't
+  exist on its branch); after D3 landed, the orchestrator extended it to also consider
+  `cfg.Kernel.Base`.
+- **Process nit:** a `git add -A` during conflict resolution staged the agents'
+  `.claude/worktrees/` checkouts as embedded repos — added a `.gitignore` entry; future
+  waves should gitignore the worktree dir up front.
+
+Deferred after Wave 4: **remote/layered configuration** (the one remaining big item, below).
+All Wave 2–4 reverse-engineered shapes still need a real archinstall 4.3 QEMU run before
+hardware — now including the snapper timer/`set-config` names.
 
 ---
 
