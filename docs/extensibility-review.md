@@ -398,6 +398,50 @@ Go stages.**
 
 ---
 
+## Wave 1 retrospective — notes for the next agent
+
+Wave 1 (hooks, stage selection, Phase B selectors) was built by **three parallel worktree
+agents** merged into one branch. What worked, and what to fix next:
+
+### Process that worked (reuse it)
+- **Partition by file ownership, not just by feature.** `config.go` is the shared hotspot
+  — every wave adds fields. Give each agent a *distinct anchor* (top-of-struct vs. a named
+  sub-block vs. end-of-struct); the additive struct edits then auto-merge. The only
+  hand-merges needed were `main.go`'s `runPhase` (two agents touched it) and one adjacent
+  type-declaration spot.
+- **New test files, never shared fixtures.** Agents added `*_test.go` files with
+  self-contained config snippets instead of editing the shared `testYAML`/`testConfig` in
+  `stages_test.go`. Zero test-file conflicts — keep this rule.
+- **Background agents need pre-authorised tools.** They can't answer permission prompts, so
+  `Edit`/`Write`/`Bash(go …)`/`Bash(git …)` must be on the allowlist or every write
+  auto-denies. They also tend to sweep untracked files in via `git add -A` — integrate with
+  explicit `git add <paths>` and check the net diff before pushing.
+- **gofmt + build/vet/test after every merge.** Merges can leave struct-tag alignment
+  unformatted (`gofmt -l` caught `config.go`). Worth a CI `gofmt -l` gate.
+
+### Concrete follow-ups found while dogfooding (fix in a future wave)
+- **Hooks `script`/`dir` don't expand `~`, and `script` is validated with `file`** (the
+  path must exist at validate time). This is inconsistent with `setup`'s `expandHome`
+  (`setup.go`). Recommend: run `script`/`dir` through `expandHome`, and reconsider the eager
+  `file` existence check — a hook script may be produced by an *earlier* hook/stage in the
+  same run, so validate-time existence is the wrong check. Until fixed, `script` must be an
+  existing absolute path.
+- **Env-substitution scans the whole file, comments included.** A literal `$` in any comment
+  or value errors unless doubled (`$$`). This is a sharp edge for users (a `$` in a config
+  comment fails the run) and it bites the remote/layered-config wave, where substitution
+  composes with merge. Consider expanding only string *values* by walking the parsed YAML
+  node tree, instead of `os.Expand` over raw bytes (`config.go:expandEnv`).
+- **C3 (decouple the kernel cmdline from Plymouth) is still pending** — the one Phase B
+  selector item not done in Wave 1. Cheap; fold it into the systemd-boot work (A4), since
+  both want a bootloader-aware `regenerateBootConfig`/`ensureKernelParam` helper.
+
+### Repo hygiene (orthogonal)
+`.claude/settings.local.json` is tracked on `main` — machine-local editor/agent settings
+that should be gitignored. Wave 1 deliberately left it as-is; a separate cleanup PR should
+`git rm --cached` it and add the `.gitignore` entry.
+
+---
+
 ## TUI conversion — scrollable viewport
 
 Goal: make `archwright` feel like a TUI, with all output in a scrollable
@@ -577,7 +621,9 @@ packages:
 This **subsumes and supersedes** the deferred local-overlay idea (B3): the same deep-merge
 engine powers both repeated `--config a --config b` (local overlays) and the in-file
 `imports:` key (remote/relative). It also composes with env-var substitution (B3): expand
-each file's `${VAR}` *after* fetch, *before* merge.
+each file's `${VAR}` *after* fetch, *before* merge. (Heads-up from Wave 1: substitution
+today scans raw bytes including comments — see the Wave 1 retrospective; moving to
+value-only expansion is cleaner and a prerequisite for sane merging here.)
 
 ### Config-source resolution
 
