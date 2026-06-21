@@ -236,7 +236,7 @@ chezmoi:
 #   repo: https://github.com/AdamJHall/dotfiles
 
 # --- post-dotfiles setup ----------------------------------------------------
-# Runs after chezmoi (stage 85). For things a dotfiles repo references but can't
+# Runs after the dotfiles stage (stage 85). For things a dotfiles repo references but can't
 # vendor: oh-my-zsh + its custom plugins, tmux's TPM, theme repos.
 #
 # `steps` is an ordered list — each entry is either a `clone` or a `command`, and

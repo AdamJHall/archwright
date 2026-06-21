@@ -269,10 +269,10 @@ type SwapConfig struct {
 | A1 | Layout-strategy interface; de-special-case `Build` | **HIGH** | MED | ✅ Wave 2 |
 | A2 | btrfs + subvolumes | **HIGH** | MED | ✅ Wave 2 |
 | A4b | Canonical `bootloader_config` + nested-only encryption | **HIGH** | LOW | ✅ Wave 2 |
-| A3 | LUKS (`lvm_on_luks`) | MED-HIGH | MED | pending |
+| A3 | LUKS (`luks` / `lvm_on_luks`) | MED-HIGH | MED | ✅ Wave 3 |
 | A5 | Swap options (zram/partition/none) | MED | LOW | ✅ Wave 2 |
-| A4 | systemd-boot | MED | LOW-MED | pending |
-| A6 | separate /home, NTP; plain layout ✅ (Wave 2) | MED | LOW-MED | partial |
+| A4 | systemd-boot | MED | LOW-MED | ✅ Wave 3 |
+| A6 | separate /home (LVM volumes) ✅ (Wave 3), NTP ✅ (Wave 3); plain layout ✅ (Wave 2) | MED | LOW-MED | ✅ Wave 3 |
 | — | ZFS, BIOS/MBR, multi-user | LOW | skip/defer | — |
 
 ---
@@ -376,7 +376,7 @@ checkout into `$HOME`; stow → punt to hooks.
 | C2a | `aur_helper: yay\|paru` | MED | LOW | ✅ Wave 1 |
 | C2b | Flatpak remotes | MED | LOW | ✅ Wave 1 |
 | C3 | Decouple cmdline edit from Plymouth | MED | LOW-MED | ✅ Wave 2 |
-| C4 | `dotfiles.manager` selector | LOW-MED | LOW | pending |
+| C4 | `dotfiles.manager` selector | LOW-MED | LOW | ✅ Wave 3 |
 
 ---
 
@@ -389,9 +389,11 @@ checkout into `$HOME`; stow → punt to hooks.
    (Wave 1, landed).
 3. **Disk genericity:** layout-strategy refactor ✅ + fix the two deprecated archinstall
    shapes (A4b) ✅, then btrfs ✅ / swap ✅ as independent builders, each with a golden
-   fixture (Wave 2, landed). LUKS (A3) and systemd-boot (A4) still pending.
+   fixture (Wave 2, landed). LUKS (A3) ✅ and systemd-boot (A4) ✅ + multiple LVM volumes /
+   NTP (A6) ✅ (Wave 3, landed).
 4. **Phase B selectors:** `desktop.environment` ✅, `aur_helper` ✅, flatpak remotes ✅
-   (Wave 1, landed); decouple cmdline from Plymouth (C3) ✅ (Wave 2, landed).
+   (Wave 1, landed); decouple cmdline from Plymouth (C3) ✅ (Wave 2, landed);
+   `dotfiles.manager` (C4) ✅ (Wave 3, landed).
 
 **Wave 2 landed** the three Wave 1 correctness follow-ups (value-only env-substitution,
 hooks `~`-expansion + dropping the eager `script` `file` check, and C3) plus the disk
@@ -399,11 +401,22 @@ genericity headline (A1 layout-strategy refactor, A4b canonical `bootloader_conf
 nested-only encryption, A2 btrfs+subvolumes, A5 swap options). See the Wave 2 retrospective
 below.
 
-**Next wave starts here:** LUKS (A3, VM-validate the >2-partition limit), systemd-boot (A4,
-branch the C3 helper), A6 leftovers (separate `/home`, NTP toggle), and the still-deferred
-TUI conversion / remote-layered-config items. Plus the VM-validation caveats from Wave 2
-(see the retrospective) — confirm the reverse-engineered `bootloader_config` and btrfs
-subvolume JSON shapes against a real archinstall 4.3 run before trusting them on hardware.
+**Wave 3 landed** the remaining headline disk/boot extensibility items: A3 LUKS
+(`luks` / `lvm_on_luks`, nested under `disk_config` + top-level `encryption_password`),
+A4 systemd-boot (config-selected `bootloader.kind`, branching the C3 bootloader-aware
+helpers and `installKernels`), and A6 (multiple LVM volumes for a separate `/home`, plus a
+`system.ntp` toggle), and C4 (`dotfiles.manager`: chezmoi/yadm/bare-git/none). See the Wave 3
+retrospective below.
+
+**Next wave starts here:** the still-deferred TUI conversion and remote/layered-config items
+(both big, both documented in their own sections below), plus snapper wiring for
+`btrfs.snapshots: snapper` (carried in config since Wave 2 but not yet provisioned).
+Everything new since Wave 1 carries **VM-validation caveats** — confirm the
+reverse-engineered shapes against a real archinstall 4.3 run before trusting on hardware:
+the Wave 2 `bootloader_config`/btrfs-subvolume JSON, and the Wave 3 `disk_encryption`
+obj_id wiring + `encryption_password` casing, the `lvm_on_luks` >2-partition limit, the
+systemd-boot loader-entry default + `bootctl update` cmdline-refresh paths, and the
+multi-volume LVM "rest of VG" sizing.
 
 Recurring theme: **prefer one good escape hatch (hooks + dotfiles repo) over many bespoke
 Go stages.**
@@ -504,6 +517,67 @@ Per `CLAUDE.md`'s archinstall-drift rule, these Wave 2 shapes are reverse-engine
 - the swap `partition` shape (`fs_type: linux-swap`, flag `swap`).
 Snapper (`btrfs.snapshots: snapper`) is validated and carried in config but not yet wired to
 an actual post-install snapper setup — that belongs in a hook/stage in a later wave.
+
+---
+
+## Wave 3 retrospective — notes for the next agent
+
+Wave 3 (A3 LUKS, A4 systemd-boot, A6 multiple LVM volumes + NTP, C4 dotfiles.manager) was
+again built by **four parallel worktree agents** merged into one branch. What landed and what
+to watch:
+
+### What landed
+- **A3 LUKS:** `disks.encryption.type` (`luks` / `lvm_on_luks` / `luks_on_lvm`) renders a
+  nested `disk_config.disk_encryption` (`encryption_type` + `partitions`, derived from the
+  already-built structures — PV obj_ids for `lvm_on_luks`, the `/`-partition obj_id for
+  `luks`) plus a top-level `encryption_password` (`omitempty`). Cross-field rules
+  (`encryptionErrors()`): type-vs-layout match, and the archinstall ≤2-PV limit for LVM
+  encryption.
+- **A4 systemd-boot:** `bootloader.kind` (`grub` default | `systemd-boot`) drives the
+  archinstall `bootloader_config.bootloader` string AND branches the two C3 bootloader-aware
+  seams (`ensureKernelParam` edits `/etc/kernel/cmdline`; `regenerateBootConfig` runs
+  `bootctl update`) plus `installKernels` (systemd-boot writes the loader.conf `default`
+  instead of `GRUB_TOP_LEVEL`+`grub-mkconfig`). The grub path is byte-identical to before.
+- **A6:** `LVMLayout.Volumes` (optional list; one size-less volume takes the VG remainder,
+  exactly one mounted at `/`) for a separate `/home`; `system.ntp` toggle (`*bool`, unset =
+  true). Single-LV mode is byte-unchanged.
+- **C4:** the `chezmoi` stage became `dotfiles` (order 80 unchanged), selectable
+  `dotfiles.manager`: chezmoi/yadm/bare-git/none, with `chezmoi.repo` kept as a backward-
+  compatible repo fallback.
+
+### Process that worked (reuse it)
+- **The partition rules held for a 4th wave.** Four agents, distinct config.go anchors
+  (`System` / `DisksConfig` / end-of-`Config` / after-`Chezmoi`) and distinct archinstall.go
+  regions (the `Build` literal's bootloader/ntp/disk_config lines are non-adjacent, so they
+  auto-merged). New test files only.
+- **One genuine conflict, trivially resolved.** Two agents appended a helper *call* line after
+  `diskErrors()` in `semanticErrors()` — git flagged the adjacent insert; the resolution was
+  "keep both call lines + both new helper funcs." That's the expected orchestrator hand-merge
+  (same shape as Wave 1's `runPhase`).
+- **Default-preserves-behaviour gating worked again.** Every feature degrades to today's
+  output when its config is unset, so all five existing golden snapshots passed *without*
+  `-update`. New behaviour is proven by inline-config field-assertion tests (the
+  `btrfs_test.go` pattern), never by touching `renderCases`/`testdata`.
+
+### Cross-file follow-up the orchestrator fixed at merge
+- **`rootDevice()` (in stages, owned by no agent) broke in multi-volume mode.** It keyed off
+  `LVMLayout.LV`, which is empty when `Volumes` is set, so the post-install remount used an
+  invalid `/dev/<vg>/` path. The A6 agent correctly flagged this rather than reaching outside
+  its ownership region; the orchestrator fixed it (derive the root LV from the `/`-mounted
+  volume) and added a regression test. Lesson: when an agent's feature has a consequence in an
+  *unowned* file, having it report the follow-up instead of silently editing kept the merge
+  clean — then close the loop centrally.
+
+### VM-validation caveats (do before trusting on hardware)
+Per `CLAUDE.md`'s archinstall-drift rule, these Wave 3 shapes are reverse-engineered and
+**must be validated against a real archinstall 4.3 run**:
+- `disk_config.disk_encryption` field names/casing (`encryption_type`, `partitions`,
+  `lvm_volumes`) and that `partitions` carries PV obj_ids (lvm_on_luks) vs the root-partition
+  obj_id (luks); top-level `encryption_password` placement; and the ≤2-PV LVM-encryption limit;
+- systemd-boot: the loader-entry filename the `installKernels` default-setter globs for
+  (`*linux-<pkg>*.conf` vs a machine-id-prefixed name), and whether `bootctl update` actually
+  propagates a `/etc/kernel/cmdline` change (it may be a kernel-install-hook no-op);
+- multi-volume LVM "rest of VG" sizing (fixed volumes summed + per-PV headroom subtracted).
 
 ---
 
