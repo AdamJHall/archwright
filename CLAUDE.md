@@ -77,13 +77,13 @@ Add fields with their tags, then a table case in `config_test.go`.
   every byte — subprocess stdout/stderr *and* styled `ui` lines — is pumped into the viewport
   via the `teaWriter` (set as `Runner.Out` and `ui.SetSink`). Plain mode (`--plain`, non-TTY,
   CI, `--dry-run | less`) is the unchanged `os.Stderr` path and must stay byte-for-byte
-  identical. The TUI is skipped whenever a huh prompt would fire (interactive Phase A install)
-  since two bubbletea programs can't share the terminal — prompts run first, in plain mode.
-  The alt-screen also owns stdin, so any interactive subprocess prompt corrupts it: Phase B's
-  one such prompt (sudo's password) is pre-cached in normal terminal mode via `cacheSudo`
-  before the program starts, with a keep-alive; the `model.buf` scrollback is a
-  `*strings.Builder` (pointer) because bubbletea value-copies the model every Update and a
-  non-zero value `strings.Builder` panics when copied.
+  identical. The alt-screen also owns stdin, so all interactive input must be collected in
+  normal terminal mode *before* the program starts: a Phase A install's ERASE/password huh
+  prompts (huh is itself bubbletea — two can't share the terminal) via
+  `Context.CollectInstallPrompts`, and Phase B's sudo password via `cacheSudo` (with a
+  keep-alive). The `model.buf` scrollback is a `*strings.Builder` (pointer) because bubbletea
+  value-copies the model every Update and a non-zero value `strings.Builder` panics when
+  copied.
 - **Phase A is destructive.** It erases the configured disks. `config.yaml` is gitignored.
   Every state-changing command is recorded into `.Plan` and printed under `--dry-run`
   without executing — always exercise `--dry-run` first.

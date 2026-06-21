@@ -139,13 +139,17 @@ func runPhase(p stages.Phase) error {
 		return fmt.Errorf("no stages matched (--only %q, --skip %v, stages.disable %v)", flagOnly, flagSkip, cfg.Stages.Disable)
 	}
 
-	// TUI mode owns the alt-screen, so it cannot coexist with the huh prompts the
-	// archinstall stage runs (ConfirmErase/Password). We therefore use the TUI
-	// only when no prompt will fire — i.e. on a TTY, not --plain, not --dry-run
-	// (so `--dry-run | less` stays plain), and never for an interactive Phase A
-	// install. This keeps all input collection in normal terminal mode.
-	willPrompt := p == stages.Install && !flagYes
-	if !flagPlain && !flagDryRun && !willPrompt && term.IsTerminal(os.Stdout.Fd()) {
+	// TUI mode owns the alt-screen and stdin, so all interactive input must be
+	// collected first, in normal terminal mode: a Phase A install's ERASE/password
+	// prompts (huh, itself bubbletea) here, and Phase B's sudo password inside
+	// runPhaseTUI. We use the TUI on a TTY, not --plain, not --dry-run (so
+	// `--dry-run | less` stays plain).
+	if !flagPlain && !flagDryRun && term.IsTerminal(os.Stdout.Fd()) {
+		if p == stages.Install {
+			if err := ctx.CollectInstallPrompts(); err != nil {
+				return err
+			}
+		}
 		return runPhaseTUI(ctx, p, selected)
 	}
 	return runStages(ctx, p, selected, func(s stages.Stage) { ui.Header(s.Order(), s.Name()) })
