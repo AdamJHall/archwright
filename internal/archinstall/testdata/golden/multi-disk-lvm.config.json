@@ -15,7 +15,8 @@
     "zsh",
     "sudo",
     "networkmanager",
-    "efibootmgr"
+    "efibootmgr",
+    "intel-ucode"
   ],
   "timezone": "Europe/London",
   "ntp": true,

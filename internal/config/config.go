@@ -48,13 +48,17 @@ type Config struct {
 	Mirrors  MirrorConfig `yaml:"mirrors"`
 	Repos    []Repo       `yaml:"repos" validate:"dive"`
 	Packages []string     `yaml:"packages"`
-	// PacstrapExtra are packages added to archinstall's pacstrap (Phase A), so
-	// they are present on first boot — for things that must precede or be part of
-	// the initial system, e.g. microcode (intel-ucode/amd-ucode) which GRUB needs
-	// at config-generation time. Most software belongs in Packages (Phase B).
-	PacstrapExtra []string     `yaml:"pacstrap_extra"`
-	Kernel        KernelConfig `yaml:"kernel"`
-	Flatpaks      []string     `yaml:"flatpaks"`
+	// Pacstrap is the COMPLETE Phase-A pacstrap set, rendered verbatim into the
+	// archinstall config — nothing is prepended in code. It must list everything
+	// the installed system needs at first boot: the base set Phase B relies on
+	// (base-devel/git to build the AUR helper, the login shell, sudo,
+	// networkmanager for first-boot networking), boot tooling (efibootmgr), and
+	// CPU microcode (intel-ucode/amd-ucode). preflight warns about recommended-
+	// but-absent entries; it never silently re-adds them. Most software belongs
+	// in Packages (Phase B).
+	Pacstrap []string     `yaml:"pacstrap" validate:"required,min=1,dive,required"`
+	Kernel   KernelConfig `yaml:"kernel"`
+	Flatpaks []string     `yaml:"flatpaks"`
 	// FlatpakRemotes are extra flatpak remotes registered (in addition to the
 	// always-added built-in flathub remote) before installing apps.
 	FlatpakRemotes []FlatpakRemote `yaml:"flatpak_remotes" validate:"dive"`
@@ -109,6 +113,12 @@ type Config struct {
 	// Empty defaults to "grub" (today's behavior). systemd-boot is reverse-engineered
 	// and VM-validation-pending (see CLAUDE.md archinstall-drift rule).
 	Bootloader BootloaderConfig `yaml:"bootloader"`
+
+	// PacstrapExtraDeprecated captures the removed `pacstrap_extra` key so
+	// semanticErrors can emit a clear rename-to-`pacstrap` migration error for one
+	// release, rather than silently ignoring a config that used the old key. It is
+	// not part of the schema and has no validate rules.
+	PacstrapExtraDeprecated []string `yaml:"pacstrap_extra"`
 }
 
 // DisksConfig describes the disk layout archinstall should create. Layout is a
@@ -420,6 +430,9 @@ func (c *Config) Validate() error {
 // semanticErrors covers cross-field rules that struct tags can't express.
 func (c *Config) semanticErrors() []error {
 	var errs []error
+	if len(c.PacstrapExtraDeprecated) > 0 {
+		errs = append(errs, fmt.Errorf("pacstrap_extra has been removed: rename it to `pacstrap` and add the base set (base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode) — see config.example.yaml"))
+	}
 	k := c.Kernel
 	if k.ReplaceStock && len(k.Packages) == 0 {
 		errs = append(errs, fmt.Errorf("kernel.replace_stock requires at least one kernel.packages entry (otherwise the system would have no kernel)"))

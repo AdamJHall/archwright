@@ -23,6 +23,7 @@ user:
   name: adam
   shell: /usr/bin/zsh
   groups: [wheel, video]
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 disks:
   esp:
     device: /dev/nvme0n1

@@ -6,6 +6,7 @@ system:
   keymap: us
 user:
   name: builder
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 disks:
   esp:
     device: /dev/sda

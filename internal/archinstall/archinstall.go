@@ -227,11 +227,6 @@ type Creds struct {
 // concrete, not "rest of disk".
 type Geometry map[string]uint64
 
-// bootstrapPackages: the minimum extras archinstall installs so Phase B can run
-// (yay needs base-devel+git; the user's login shell). The full package list
-// stays in Phase B's packages stage.
-var bootstrapPackages = []string{"base-devel", "git", "zsh", "sudo", "networkmanager", "efibootmgr"}
-
 // layoutBuilder turns the live device geometry into the device modifications (and
 // optional LVM configuration) for one disk-layout strategy. Build selects one by
 // the configured Disks.Layout and assembles the rest of the archinstall Config
@@ -279,10 +274,9 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	useZram := cfg.Disks.Swap.EffectiveType() == "zram"
 
 	sysLang, sysEnc := splitLocale(cfg.System.Locale)
-	// Pacstrap list: the bootstrap minimum plus any user-requested extras (e.g.
-	// microcode). Built on a fresh slice so the package-level default is never
-	// mutated across Build calls.
-	pkgs := append(append([]string{}, bootstrapPackages...), cfg.PacstrapExtra...)
+	// Pacstrap list: rendered verbatim from cfg.Pacstrap — nothing is prepended.
+	// Copied onto a fresh slice so the caller's config is never aliased/mutated.
+	pkgs := append([]string(nil), cfg.Pacstrap...)
 	c := &Config{
 		Lang:             "English",
 		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false},

@@ -39,6 +39,7 @@ mirrors:
 repos:
   - name: cachyos
     setup: "cachyos-repo.sh --install"
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 packages: [git]
 kernel:
   packages: [linux-cachyos, linux-cachyos-headers]
@@ -220,6 +221,20 @@ func TestValidate_Errors(t *testing.T) {
 			name: "default kernel not in packages",
 			yaml: strings.Replace(validYAML, "default: linux-cachyos", "default: linux-zen", 1),
 			want: []string{`kernel.default "linux-zen" must be one of kernel.packages`},
+		},
+		{
+			name: "empty pacstrap list",
+			yaml: strings.Replace(validYAML,
+				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
+				"pacstrap: []", 1),
+			want: []string{"pacstrap must have at least 1 item(s)"},
+		},
+		{
+			name: "deprecated pacstrap_extra key errors",
+			yaml: strings.Replace(validYAML,
+				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
+				"pacstrap: [base]\npacstrap_extra: [intel-ucode]", 1),
+			want: []string{"pacstrap_extra has been removed", "rename it to `pacstrap`"},
 		},
 		{
 			name: "bad reflector sort",
