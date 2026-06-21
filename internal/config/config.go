@@ -30,6 +30,7 @@ type Config struct {
 		// the system has e.g. both en_AU.UTF-8 (default) and en_US.UTF-8 on first boot.
 		Locales []string `yaml:"locales"`
 		Keymap  string   `yaml:"keymap" validate:"required"`
+		NTP     *bool    `yaml:"ntp"` // enable NTP time sync; nil/unset defaults to true (today's behavior)
 	} `yaml:"system"`
 
 	User struct {
@@ -155,11 +156,27 @@ func (s SwapConfig) EffectiveType() string {
 }
 
 // LVMLayout is the classic ESP + LVM-on-partitions root (the historical default).
+//
+// Two mutually-exclusive shapes (enforced in lvmVolumeErrors):
+//   - single root LV: set LV + Filesystem, leave Volumes empty (the historical
+//     shape; behaviour and rendered output are byte-identical).
+//   - multiple volumes: set Volumes (e.g. a fixed root + a /home that takes the
+//     remainder), leave LV/Filesystem empty.
 type LVMLayout struct {
-	VG         string   `yaml:"vg"         validate:"required"`
-	LV         string   `yaml:"lv"         validate:"required"`
-	Filesystem string   `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
-	PVs        []string `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
+	VG         string      `yaml:"vg"         validate:"required"`
+	LV         string      `yaml:"lv"         validate:"omitempty"`                // single-LV mode: the root LV name
+	Filesystem string      `yaml:"filesystem" validate:"omitempty,oneof=xfs ext4"` // single-LV mode: root filesystem
+	PVs        []string    `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
+	Volumes    []LVMVolume `yaml:"volumes"    validate:"dive"` // optional; empty = single root LV from LV/Filesystem
+}
+
+// LVMVolume is one logical volume in the VG. Exactly one volume in the list may
+// omit Size (it receives the remainder of the VG); the rest are fixed-size.
+type LVMVolume struct {
+	Name       string `yaml:"name"       validate:"required"`
+	Mountpoint string `yaml:"mountpoint" validate:"required,startswith=/"`
+	Filesystem string `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
+	Size       string `yaml:"size"       validate:"omitempty,size"` // empty = rest of VG
 }
 
 // PlainLayout is a single root partition with no LVM: ESP + root on one disk.
@@ -383,6 +400,63 @@ func (c *Config) semanticErrors() []error {
 		}
 	}
 	errs = append(errs, c.diskErrors()...)
+	errs = append(errs, c.lvmVolumeErrors()...)
+	return errs
+}
+
+// lvmVolumeErrors enforces the cross-field rules struct tags can't express for
+// the lvm layout: an LVMLayout is either single-LV mode (LV+Filesystem set,
+// Volumes empty) or multi-volume mode (Volumes set, LV/Filesystem empty), never
+// both and never neither; and in multi-volume mode exactly one volume omits Size
+// (the remainder) and exactly one is mounted at "/".
+func (c *Config) lvmVolumeErrors() []error {
+	d := c.Disks
+	// Only relevant for the lvm layout with an lvm block present.
+	if d.EffectiveLayout() != "lvm" || d.LVM == nil {
+		return nil
+	}
+	l := d.LVM
+
+	var errs []error
+	single := l.LV != "" || l.Filesystem != ""
+	multi := len(l.Volumes) > 0
+	switch {
+	case single && multi:
+		errs = append(errs, fmt.Errorf("disks.lvm must set either lv+filesystem (single root LV) or volumes, not both"))
+		return errs
+	case !single && !multi:
+		errs = append(errs, fmt.Errorf("disks.lvm must set either lv+filesystem (single root LV) or volumes"))
+		return errs
+	}
+
+	if single {
+		// In single-LV mode both lv and filesystem are required (the relaxed
+		// struct tags allow one without the other; enforce the pair here).
+		if l.LV == "" {
+			errs = append(errs, fmt.Errorf("disks.lvm.lv is required when volumes is not set"))
+		}
+		if l.Filesystem == "" {
+			errs = append(errs, fmt.Errorf("disks.lvm.filesystem is required when volumes is not set"))
+		}
+		return errs
+	}
+
+	// Multi-volume mode: exactly one rest (size-less) volume and exactly one "/".
+	rest, roots := 0, 0
+	for _, v := range l.Volumes {
+		if v.Size == "" {
+			rest++
+		}
+		if v.Mountpoint == "/" {
+			roots++
+		}
+	}
+	if rest != 1 {
+		errs = append(errs, fmt.Errorf("disks.lvm.volumes must have exactly one volume without a size (it takes the rest of the VG); found %d", rest))
+	}
+	if roots != 1 {
+		errs = append(errs, fmt.Errorf("disks.lvm.volumes must have exactly one volume mounted at / (the root); found %d", roots))
+	}
 	return errs
 }
 

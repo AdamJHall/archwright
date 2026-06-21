@@ -16,6 +16,7 @@ system:
   locales:                       # additional locales to also enable in /etc/locale.gen
     - en_US.UTF-8
   keymap: us                     # console keymap; see: localectl list-keymaps
+  # ntp: true                    # enable NTP time sync (default true when omitted)
 
 user:
   name: adam
@@ -69,6 +70,14 @@ disks:
       - /dev/sda2            # remainder disk with the partition of the ESP device
       - /dev/sdb             # whole second disk
       - /dev/sdc             # whole second disk
+    # --- multiple logical volumes (optional) ---
+    # Instead of lv+filesystem above, carve several LVs in the VG — e.g. a
+    # fixed-size root plus a /home that takes the rest. Set either lv+filesystem
+    # OR volumes, not both. Exactly one volume omits `size` (it gets the rest of
+    # the VG) and exactly one is mounted at `/` (the root).
+    # volumes:
+    #   - { name: root, mountpoint: /,     filesystem: xfs,  size: 64GiB }
+    #   - { name: home, mountpoint: /home, filesystem: ext4 }   # rest of the VG
 
   # --- btrfs alternative (set layout: btrfs) ---
   # On btrfs, prefer swap.type zram or partition — a swapfile needs a dedicated
