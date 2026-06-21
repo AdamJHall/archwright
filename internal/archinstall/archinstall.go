@@ -157,6 +157,17 @@ type BootloaderConfig struct {
 	Removable  bool   `json:"removable"`
 }
 
+// archBootloader maps our config bootloader kind ("grub"/"systemd-boot") to
+// archinstall's bootloader string. "grub" yields the exact same "Grub" value as
+// before; "systemd-boot" maps to archinstall's "Systemd-boot". Any unknown kind
+// falls back to "Grub" (validation already restricts the set upstream).
+func archBootloader(kind string) string {
+	if kind == "systemd-boot" {
+		return "Systemd-boot"
+	}
+	return "Grub"
+}
+
 // LocaleConfig mirrors locale_config.
 type LocaleConfig struct {
 	KbLayout string `json:"kb_layout"`
@@ -258,7 +269,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	pkgs := append(append([]string{}, bootstrapPackages...), cfg.PacstrapExtra...)
 	c := &Config{
 		Lang:             "English",
-		BootloaderConfig: BootloaderConfig{Bootloader: "Grub", UKI: false, Removable: false},
+		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false},
 		Kernels:          []string{"linux"},
 		Hostname:         cfg.System.Hostname,
 		Packages:         pkgs,
