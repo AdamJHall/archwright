@@ -27,14 +27,6 @@ type Context struct {
 	R          *run.Runner
 	AssumeYes  bool
 	ConfigPath string
-
-	// InstallPassword / PromptsCollected let the destructive Phase A prompts
-	// (ERASE confirmation + user/root password) be hoisted ahead of a TUI
-	// alt-screen, which owns stdin. main.go calls Context.CollectInstallPrompts
-	// in normal terminal mode before entering the TUI; the archinstall stage
-	// falls back to calling it inline for the plain path.
-	InstallPassword  string
-	PromptsCollected bool
 }
 
 // Stage is one ordered unit of work. Order is the numeric prefix (10, 20, ...)

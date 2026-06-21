@@ -72,18 +72,8 @@ Add fields with their tags, then a table case in `config_test.go`.
   `archinstall.Build` computes "rest of disk"/"rest of VG" from probed `Geometry`
   (device→bytes). Whole-disk PVs become full-disk *partitioned* PVs (accepted deviation;
   archinstall can't do raw whole-disk PVs).
-- **Output must flow through the viewport sink, never to `os.Stdout`/`os.Stderr` while
-  the TUI owns the screen.** In TUI mode (`internal/tui`) bubbletea takes the alt-screen, so
-  every byte — subprocess stdout/stderr *and* styled `ui` lines — is pumped into the viewport
-  via the `teaWriter` (set as `Runner.Out` and `ui.SetSink`). Plain mode (`--plain`, non-TTY,
-  CI, `--dry-run | less`) is the unchanged `os.Stderr` path and must stay byte-for-byte
-  identical. The alt-screen also owns stdin, so all interactive input must be collected in
-  normal terminal mode *before* the program starts: a Phase A install's ERASE/password huh
-  prompts (huh is itself bubbletea — two can't share the terminal) via
-  `Context.CollectInstallPrompts`, and Phase B's sudo password via `cacheSudo` (with a
-  keep-alive). The `model.buf` scrollback is a `*strings.Builder` (pointer) because bubbletea
-  value-copies the model every Update and a non-zero value `strings.Builder` panics when
-  copied.
+- **No bubbletea/bubbles spinner** anywhere, deliberately — it would swallow streamed
+  pacstrap/yay output. The `Runner` streams stdout/stderr straight through.
 - **Phase A is destructive.** It erases the configured disks. `config.yaml` is gitignored.
   Every state-changing command is recorded into `.Plan` and printed under `--dry-run`
   without executing — always exercise `--dry-run` first.

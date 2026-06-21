@@ -31,40 +31,25 @@ const (
 	aiCredsPath  = "/tmp/archinstall-creds.json"
 )
 
-// CollectInstallPrompts runs the destructive Phase A prompts — the ERASE
-// confirmation and the user/root password — in the current (normal) terminal,
-// storing the password on the Context. It is a no-op under --yes or if already
-// collected. Call it before entering a TUI alt-screen (which owns stdin); the
-// archinstall stage otherwise calls it inline for the plain path.
-func (ctx *Context) CollectInstallPrompts() error {
-	if ctx.AssumeYes || ctx.PromptsCollected {
-		return nil
-	}
-	ui.Warn("archinstall will ERASE these devices", "devices", strings.Join(wipedDevices(ctx.Cfg), " "))
-	if err := ui.ConfirmErase("ERASE", "This wipes the disks above and installs Arch."); err != nil {
-		return err
-	}
-	pw, err := ui.Password(fmt.Sprintf("Set a password for user %q and root", ctx.Cfg.User.Name))
-	if err != nil {
-		return err
-	}
-	ctx.InstallPassword = pw
-	ctx.PromptsCollected = true
-	return nil
-}
-
 func (archinstallStage) Run(ctx *Context) error {
 	wiped := wipedDevices(ctx.Cfg)
 
-	// Confirmation + credentials. Hoisted ahead of the TUI by main.go when one is
-	// used; otherwise collected here (no-op under --yes, which uses a throwaway
-	// password for VMs).
-	if err := ctx.CollectInstallPrompts(); err != nil {
-		return err
+	// Destructive confirmation (skipped by --yes).
+	if !ctx.AssumeYes {
+		ui.Warn("archinstall will ERASE these devices", "devices", strings.Join(wiped, " "))
+		if err := ui.ConfirmErase("ERASE", "This wipes the disks above and installs Arch."); err != nil {
+			return err
+		}
 	}
+
+	// Credentials: prompt for a real install, throwaway for --yes (VMs only).
 	password := "installme"
-	if ctx.InstallPassword != "" {
-		password = ctx.InstallPassword
+	if !ctx.AssumeYes {
+		pw, err := ui.Password(fmt.Sprintf("Set a password for user %q and root", ctx.Cfg.User.Name))
+		if err != nil {
+			return err
+		}
+		password = pw
 	}
 
 	geom, err := probeGeometry(wiped, ctx.R.DryRun)
