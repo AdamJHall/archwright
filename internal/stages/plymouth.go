@@ -1,8 +1,6 @@
 package stages
 
 import (
-	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/AdamJHall/archwright/internal/ui"
@@ -29,10 +27,8 @@ func (plymouth) Run(ctx *Context) error {
 		cmdline = "quiet splash"
 	}
 
-	if _, err := exec.LookPath("plymouth"); err != nil {
-		if err := ctx.R.Root("pacman", "-S", "--needed", "--noconfirm", "plymouth"); err != nil {
-			return err
-		}
+	if err := ensureTool(ctx, "plymouth", "plymouth"); err != nil {
+		return err
 	}
 
 	// Add the plymouth hook after 'udev' (fallback 'systemd'), idempotently.
@@ -45,10 +41,7 @@ func (plymouth) Run(ctx *Context) error {
 
 	// Ensure each kernel param is present in GRUB_CMDLINE_LINUX_DEFAULT.
 	for _, tok := range strings.Fields(cmdline) {
-		if err := ctx.R.Shell(fmt.Sprintf(
-			`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\b%[1]s\b' /etc/default/grub || `+
-				`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1%[1]s /' /etc/default/grub`,
-			tok)); err != nil {
+		if err := ensureKernelParam(ctx, tok); err != nil {
 			return err
 		}
 	}

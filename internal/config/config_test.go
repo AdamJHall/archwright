@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -64,6 +66,52 @@ func load(t *testing.T, y string) *Config {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	return &c
+}
+
+func TestLoad_EnvSubstitution(t *testing.T) {
+	write := func(t *testing.T, body string) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	t.Run("substitutes ${VAR} and $VAR", func(t *testing.T) {
+		t.Setenv("AW_USER", "adam")
+		t.Setenv("AW_REPO", "https://example.com/dotfiles")
+		cfg, err := Load(write(t, "user:\n  name: ${AW_USER}\nchezmoi:\n  repo: $AW_REPO\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.User.Name != "adam" {
+			t.Errorf("user.name = %q, want adam", cfg.User.Name)
+		}
+		if cfg.Chezmoi.Repo != "https://example.com/dotfiles" {
+			t.Errorf("chezmoi.repo = %q", cfg.Chezmoi.Repo)
+		}
+	})
+
+	t.Run("unset variable errors", func(t *testing.T) {
+		_, err := Load(write(t, "user:\n  name: ${AW_DOES_NOT_EXIST}\n"))
+		if err == nil {
+			t.Fatal("expected error for unset variable, got nil")
+		}
+		if !strings.Contains(err.Error(), "AW_DOES_NOT_EXIST") {
+			t.Errorf("error should name the missing var, got: %v", err)
+		}
+	})
+
+	t.Run("$$ is a literal dollar", func(t *testing.T) {
+		cfg, err := Load(write(t, "user:\n  name: a$$b\n"))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.User.Name != "a$b" {
+			t.Errorf("user.name = %q, want a$b", cfg.User.Name)
+		}
+	})
 }
 
 func TestValidate_Valid(t *testing.T) {

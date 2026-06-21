@@ -2,7 +2,6 @@ package stages
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/AdamJHall/archwright/internal/ui"
@@ -25,10 +24,8 @@ func (chezmoi) Run(ctx *Context) error {
 		return nil
 	}
 
-	if _, err := exec.LookPath("chezmoi"); err != nil {
-		if err := ctx.R.Root("pacman", "-S", "--needed", "--noconfirm", "chezmoi"); err != nil {
-			return err
-		}
+	if err := ensureTool(ctx, "chezmoi", "chezmoi"); err != nil {
+		return err
 	}
 
 	// Already initialized? Apply. Otherwise init from the repo.
