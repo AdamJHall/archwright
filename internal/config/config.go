@@ -91,6 +91,8 @@ type Config struct {
 	} `yaml:"chezmoi"`
 
 	Setup SetupConfig `yaml:"setup"`
+
+	Hooks []Hook `yaml:"hooks" validate:"dive"`
 }
 
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
@@ -120,6 +122,18 @@ type Clone struct {
 	Dest   string `yaml:"dest"   validate:"required"`
 	Ref    string `yaml:"ref"`
 	Update bool   `yaml:"update"`
+}
+
+// Hook is a user-defined command run at a named lifecycle point. Exactly one of
+// Run (an inline shell snippet) or Script (a path to a script file) is set.
+type Hook struct {
+	Name   string            `yaml:"name"`
+	At     string            `yaml:"at"     validate:"required,hookpoint"`
+	Run    string            `yaml:"run"    validate:"required_without=Script"`
+	Script string            `yaml:"script" validate:"omitempty,file"`
+	Root   bool              `yaml:"root"`   // run privileged (Root) vs unprivileged (Cmd/Shell)
+	Env    map[string]string `yaml:"env"`
+	Dir    string            `yaml:"dir"`
 }
 
 // Repo is a custom pacman repository. It is configured in Phase A's
@@ -264,6 +278,25 @@ func newValidator() *validator.Validate {
 		return sizeRe.MatchString(fl.Field().String())
 	})
 
+	// Custom rule: a hook lifecycle point — one of the four global points, or a
+	// per-stage "before:<stage>"/"after:<stage>" with a non-empty stage token.
+	// The existence of the named stage is validated elsewhere (the stages package
+	// owns the registry), keeping this package dependency-free.
+	_ = v.RegisterValidation("hookpoint", func(fl validator.FieldLevel) bool {
+		at := fl.Field().String()
+		switch at {
+		case "pre-install", "post-install", "pre-bootstrap", "post-bootstrap":
+			return true
+		}
+		if t, ok := strings.CutPrefix(at, "before:"); ok {
+			return t != ""
+		}
+		if t, ok := strings.CutPrefix(at, "after:"); ok {
+			return t != ""
+		}
+		return false
+	})
+
 	return v
 }
 
@@ -290,6 +323,10 @@ func describe(fe validator.FieldError) string {
 		return "must be a valid hostname"
 	case "size":
 		return "must be a size like 64GiB"
+	case "hookpoint":
+		return `must be a lifecycle point: pre-install, post-install, pre-bootstrap, post-bootstrap, or before:<stage>/after:<stage>`
+	case "required_without":
+		return "is required when script is not set"
 	default:
 		return fmt.Sprintf("failed rule %q", fe.Tag())
 	}

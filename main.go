@@ -68,6 +68,9 @@ func main() {
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
+			if err := stages.ValidateHooks(cfg); err != nil {
+				return err
+			}
 			ui.OK("config valid: %s", flagConfig)
 			return nil
 		},
@@ -93,15 +96,31 @@ func runPhase(p stages.Phase) error {
 		ConfigPath: flagConfig,
 	}
 
+	if err := stages.ValidateHooks(cfg); err != nil {
+		return err
+	}
+
 	selected := stages.For(p, flagOnly)
 	if len(selected) == 0 {
 		return fmt.Errorf("no stages matched (--only %q)", flagOnly)
 	}
+	if err := stages.FireHooks(ctx, stages.PhasePre(p)); err != nil {
+		return err
+	}
 	for _, s := range selected {
+		if err := stages.FireHooks(ctx, "before:"+s.Name()); err != nil {
+			return err
+		}
 		ui.Header(s.Order(), s.Name())
 		if err := s.Run(ctx); err != nil {
 			return fmt.Errorf("stage %s: %w", s.Name(), err)
 		}
+		if err := stages.FireHooks(ctx, "after:"+s.Name()); err != nil {
+			return err
+		}
+	}
+	if err := stages.FireHooks(ctx, stages.PhasePost(p)); err != nil {
+		return err
 	}
 	ui.OK("done")
 	return nil
