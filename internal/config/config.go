@@ -118,6 +118,8 @@ type DisksConfig struct {
 	LVM   *LVMLayout   `yaml:"lvm"`   // required when layout is lvm (or empty)
 	Btrfs *BtrfsLayout `yaml:"btrfs"` // required when layout is btrfs
 	Plain *PlainLayout `yaml:"plain"` // required when layout is plain
+
+	Encryption *Encryption `yaml:"encryption"` // optional LUKS; nil = no encryption
 }
 
 // EffectiveLayout returns the configured layout with the empty-default applied.
@@ -183,6 +185,12 @@ type BtrfsLayout struct {
 type Subvol struct {
 	Name       string `yaml:"name"       validate:"required"`
 	Mountpoint string `yaml:"mountpoint" validate:"required"`
+}
+
+// Encryption enables LUKS. Type: "luks" (encrypt the single root partition,
+// for plain/btrfs) or "lvm_on_luks" (encrypt the PV partitions under LVM).
+type Encryption struct {
+	Type string `yaml:"type" validate:"required,oneof=luks lvm_on_luks luks_on_lvm"`
 }
 
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
@@ -383,6 +391,37 @@ func (c *Config) semanticErrors() []error {
 		}
 	}
 	errs = append(errs, c.diskErrors()...)
+	errs = append(errs, c.encryptionErrors()...)
+	return errs
+}
+
+// encryptionErrors covers the cross-field LUKS rules: the encryption type must
+// match the chosen layout, and archinstall's LVM-on-LUKS path rejects more than
+// two PV partitions (archinstall/lib/disk/device_handler.py). Kept separate from
+// diskErrors so the two concerns stay disjoint.
+//
+// VM-validation-pending: the >2-PV limit and exact archinstall rejection
+// behaviour have not yet been confirmed against a real archinstall run.
+func (c *Config) encryptionErrors() []error {
+	var errs []error
+	d := c.Disks
+	if d.Encryption == nil {
+		return errs
+	}
+	layout := d.EffectiveLayout()
+	switch d.Encryption.Type {
+	case "lvm_on_luks", "luks_on_lvm":
+		if layout != "lvm" {
+			errs = append(errs, fmt.Errorf("disks.encryption.type %s requires the lvm layout", d.Encryption.Type))
+		}
+		if layout == "lvm" && d.LVM != nil && len(d.LVM.PVs) > 2 {
+			errs = append(errs, fmt.Errorf("disks.encryption.type %s supports at most 2 PVs (archinstall limit); got %d", d.Encryption.Type, len(d.LVM.PVs)))
+		}
+	case "luks":
+		if layout != "plain" && layout != "btrfs" {
+			errs = append(errs, fmt.Errorf("disks.encryption.type luks requires the plain or btrfs layout"))
+		}
+	}
 	return errs
 }
 
