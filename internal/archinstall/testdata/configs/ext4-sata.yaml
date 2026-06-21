@@ -6,6 +6,8 @@ system:
   keymap: us
 user:
   name: builder
+kernel:
+  base: [linux]
 disks:
   esp:
     device: /dev/sda
