@@ -38,6 +38,10 @@ type Config struct {
 		Groups []string `yaml:"groups"`
 	} `yaml:"user"`
 
+	Stages struct {
+		Disable []string `yaml:"disable"` // stage names to skip without emptying their config
+	} `yaml:"stages"`
+
 	Disks struct {
 		ESP struct {
 			Device string `yaml:"device" validate:"required,startswith=/dev/"`

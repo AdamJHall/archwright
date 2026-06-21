@@ -27,6 +27,7 @@ var version = "dev"
 var (
 	flagDryRun bool
 	flagOnly   string
+	flagSkip   []string
 	flagConfig string
 	flagYes    bool
 )
@@ -42,6 +43,7 @@ func main() {
 	pf := root.PersistentFlags()
 	pf.BoolVar(&flagDryRun, "dry-run", false, "print commands instead of running them")
 	pf.StringVar(&flagOnly, "only", "", "run a single stage by name or number")
+	pf.StringArrayVar(&flagSkip, "skip", nil, "skip a stage by name or number (repeatable)")
 	pf.StringVar(&flagConfig, "config", "config.yaml", "path to config.yaml")
 
 	installCmd := &cobra.Command{
@@ -76,7 +78,22 @@ func main() {
 		},
 	}
 
-	root.AddCommand(installCmd, bootstrapCmd, validateCmd)
+	listStagesCmd := &cobra.Command{
+		Use:   "list-stages",
+		Short: "List all registered stages with their order, name and phase",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			for _, s := range stages.All() {
+				phase := "Install"
+				if s.Phase() == stages.Bootstrap {
+					phase = "Bootstrap"
+				}
+				fmt.Printf("%-10s %-4d %s\n", phase, s.Order(), s.Name())
+			}
+			return nil
+		},
+	}
+
+	root.AddCommand(installCmd, bootstrapCmd, validateCmd, listStagesCmd)
 
 	if err := root.Execute(); err != nil {
 		ui.Error(err.Error())
@@ -100,9 +117,9 @@ func runPhase(p stages.Phase) error {
 		return err
 	}
 
-	selected := stages.For(p, flagOnly)
+	selected := stages.Select(p, flagOnly, flagSkip, cfg.Stages.Disable)
 	if len(selected) == 0 {
-		return fmt.Errorf("no stages matched (--only %q)", flagOnly)
+		return fmt.Errorf("no stages matched (--only %q, --skip %v, stages.disable %v)", flagOnly, flagSkip, cfg.Stages.Disable)
 	}
 	if err := stages.FireHooks(ctx, stages.PhasePre(p)); err != nil {
 		return err

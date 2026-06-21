@@ -58,3 +58,40 @@ func For(p Phase, only string) []Stage {
 	sort.Slice(out, func(i, j int) bool { return out[i].Order() < out[j].Order() })
 	return out
 }
+
+// Select returns the stages of phase p to run. When only != "", it wins and
+// returns just that stage (matched by name or number), ignoring skip/disable.
+// Otherwise it returns all phase stages minus any whose name or order-number
+// appears in skip or disable.
+func Select(p Phase, only string, skip, disable []string) []Stage {
+	if only != "" {
+		return For(p, only)
+	}
+	excluded := make(map[string]bool)
+	for _, e := range skip {
+		excluded[e] = true
+	}
+	for _, e := range disable {
+		excluded[e] = true
+	}
+	var out []Stage
+	for _, s := range For(p, "") {
+		if excluded[s.Name()] || excluded[strconv.Itoa(s.Order())] {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// All returns every registered stage across all phases, sorted by phase then order.
+func All() []Stage {
+	out := append([]Stage(nil), registry...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Phase() != out[j].Phase() {
+			return out[i].Phase() < out[j].Phase()
+		}
+		return out[i].Order() < out[j].Order()
+	})
+	return out
+}
