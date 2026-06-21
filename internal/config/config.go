@@ -94,6 +94,13 @@ type Config struct {
 		Repo string `yaml:"repo" validate:"omitempty,url"`
 	} `yaml:"chezmoi"`
 
+	// Dotfiles selects how dotfiles are applied in Phase B. Manager defaults to
+	// "chezmoi"; Repo defaults to chezmoi.repo when unset (backward compatible).
+	Dotfiles struct {
+		Manager string `yaml:"manager" validate:"omitempty,oneof=chezmoi yadm bare-git none"`
+		Repo    string `yaml:"repo"    validate:"omitempty,url"`
+	} `yaml:"dotfiles"`
+
 	Setup SetupConfig `yaml:"setup"`
 
 	Hooks []Hook `yaml:"hooks" validate:"dive"`

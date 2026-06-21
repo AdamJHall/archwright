@@ -217,6 +217,24 @@ kde:
 chezmoi:
   repo: https://github.com/AdamJHall/dotfiles
 
+# The dotfiles stage (80) supports a selectable manager. When `dotfiles:` is
+# omitted entirely, the manager defaults to `chezmoi` and the repo falls back to
+# `chezmoi.repo` above — so the block below is optional and only needed to pick a
+# different manager or repo.
+#
+#   manager:
+#     chezmoi  (default) — chezmoi init --apply <repo>, or `chezmoi apply` when
+#                          ~/.local/share/chezmoi is already initialized.
+#     yadm               — yadm clone <repo>, or `yadm pull` when already cloned.
+#     bare-git           — classic bare repo at ~/.dotfiles with --work-tree=$HOME.
+#     none               — skip dotfiles entirely (clean no-op).
+#
+#   repo: defaults to chezmoi.repo when unset (backward compatible).
+#
+# dotfiles:
+#   manager: chezmoi
+#   repo: https://github.com/AdamJHall/dotfiles
+
 # --- post-dotfiles setup ----------------------------------------------------
 # Runs after chezmoi (stage 85). For things a dotfiles repo references but can't
 # vendor: oh-my-zsh + its custom plugins, tmux's TPM, theme repos.
