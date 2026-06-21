@@ -162,6 +162,14 @@ aur:                             # built via the AUR helper (see aur_helper)
 
 aur_helper: yay                  # yay (default) | paru — installed in Phase B, used for `aur`
 
+# --- bootloader -------------------------------------------------------------
+# Which bootloader Phase A installs (via archinstall) and Phase B configures.
+# Empty (or `grub`) keeps today's behaviour. `systemd-boot` is reverse-engineered
+# and VM-validation-pending (no grub.cfg; cmdline edits go to /etc/kernel/cmdline,
+# and `bootctl update` replaces grub-mkconfig).
+bootloader:
+  kind: grub                     # grub | systemd-boot
+
 # --- boot splash / theming --------------------------------------------------
 plymouth:
   theme: spinner                    # name passed to plymouth-set-default-theme

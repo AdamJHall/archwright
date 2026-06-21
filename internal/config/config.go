@@ -96,6 +96,11 @@ type Config struct {
 	Setup SetupConfig `yaml:"setup"`
 
 	Hooks []Hook `yaml:"hooks" validate:"dive"`
+
+	// Bootloader selects which bootloader Phase A installs and Phase B configures.
+	// Empty defaults to "grub" (today's behavior). systemd-boot is reverse-engineered
+	// and VM-validation-pending (see CLAUDE.md archinstall-drift rule).
+	Bootloader BootloaderConfig `yaml:"bootloader"`
 }
 
 // DisksConfig describes the disk layout archinstall should create. Layout is a
@@ -263,6 +268,22 @@ type KernelConfig struct {
 	Packages     []string `yaml:"packages"`      // e.g. [linux-cachyos, linux-cachyos-headers]
 	Default      string   `yaml:"default"`       // GRUB top-level (default) kernel; must be one of Packages
 	ReplaceStock bool     `yaml:"replace_stock"` // remove the stock `linux` kernel after install
+}
+
+// BootloaderConfig selects the bootloader Phase A installs (via archinstall) and
+// Phase B configures (kernel cmdline + boot config regeneration). Empty Kind
+// defaults to "grub" (today's behavior); "systemd-boot" is reverse-engineered and
+// VM-validation-pending (see CLAUDE.md archinstall-drift rule).
+type BootloaderConfig struct {
+	Kind string `yaml:"kind" validate:"omitempty,oneof=grub systemd-boot"`
+}
+
+// EffectiveKind returns the configured bootloader with the empty-default applied.
+func (b BootloaderConfig) EffectiveKind() string {
+	if b.Kind == "" {
+		return "grub"
+	}
+	return b.Kind
 }
 
 // MirrorConfig drives a reflector run in the live ISO before archinstall, so
