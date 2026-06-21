@@ -290,7 +290,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		Hostname:         cfg.System.Hostname,
 		Packages:         pkgs,
 		Timezone:         cfg.System.Timezone,
-		Ntp:              true,
+		Ntp:              cfg.System.NTP == nil || *cfg.System.NTP,
 		Swap:             useZram,
 		LocaleConfig: LocaleConfig{
 			KbLayout: cfg.System.Keymap, SysEnc: sysEnc, SysLang: sysLang,
@@ -475,28 +475,86 @@ func (b *lvmBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
 		totalPVBytes += size
 	}
 
-	// Root LV: consume (almost) all of the VG. Shave headroom per PV so the
-	// concrete byte length stays under the VG's free extents.
+	// Available VG bytes for logical volumes: total PV bytes minus per-PV
+	// headroom (LVM metadata + alignment), so concrete lengths stay under the
+	// VG's free extents.
 	headroom := vgHeadroomPerPV * uint64(len(pvObjIDs))
 	if totalPVBytes <= headroom {
 		return nil, nil, fmt.Errorf("volume group too small for headroom")
 	}
-	lvBytes := roundDownMiB(totalPVBytes - headroom)
+	available := roundDownMiB(totalPVBytes - headroom)
 
-	root := "/"
+	volumes, err := b.volumes(available)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	lvm := &LvmConfiguration{
 		ConfigType: "default",
 		VolGroups: []LvmVolumeGroup{{
-			Name:   b.lvm.VG,
-			LvmPvs: pvObjIDs,
-			Volumes: []LvmVolume{{
-				ObjID: newObjID(), Status: "create", Name: b.lvm.LV,
-				FsType: b.lvm.Filesystem, Length: bytes(lvBytes),
-				Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
-			}},
+			Name:    b.lvm.VG,
+			LvmPvs:  pvObjIDs,
+			Volumes: volumes,
 		}},
 	}
 	return devices, lvm, nil
+}
+
+// volumes turns the configured LVM layout into the LvmVolume list, given the
+// bytes available in the VG (already net of per-PV headroom).
+//
+// Single-LV mode (Volumes empty): one root LV consuming all of `available`,
+// mounted at "/", using LV/Filesystem — byte-identical to the historical output.
+//
+// Multi-volume mode: one LvmVolume per configured volume. Fixed-size volumes are
+// parsed from Size; the single size-less volume receives the remainder
+// (available minus the sum of the fixed sizes). Volumes are emitted in declared
+// order.
+func (b *lvmBuilder) volumes(available uint64) ([]LvmVolume, error) {
+	root := "/"
+
+	if len(b.lvm.Volumes) == 0 {
+		return []LvmVolume{{
+			ObjID: newObjID(), Status: "create", Name: b.lvm.LV,
+			FsType: b.lvm.Filesystem, Length: bytes(available),
+			Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
+		}}, nil
+	}
+
+	// Sum the fixed-size volumes so the remainder volume can take what's left.
+	var fixedTotal uint64
+	for _, v := range b.lvm.Volumes {
+		if v.Size == "" {
+			continue
+		}
+		n, err := parseSize(v.Size)
+		if err != nil {
+			return nil, fmt.Errorf("lvm volume %q size: %w", v.Name, err)
+		}
+		fixedTotal += roundDownMiB(n)
+	}
+	if fixedTotal >= available {
+		return nil, fmt.Errorf("lvm volumes (%d bytes fixed) exceed the available VG space (%d bytes)", fixedTotal, available)
+	}
+	restBytes := roundDownMiB(available - fixedTotal)
+
+	out := make([]LvmVolume, 0, len(b.lvm.Volumes))
+	for _, v := range b.lvm.Volumes {
+		var length uint64
+		if v.Size == "" {
+			length = restBytes
+		} else {
+			n, _ := parseSize(v.Size) // already validated above
+			length = roundDownMiB(n)
+		}
+		mp := v.Mountpoint
+		out = append(out, LvmVolume{
+			ObjID: newObjID(), Status: "create", Name: v.Name,
+			FsType: v.Filesystem, Length: bytes(length),
+			Mountpoint: &mp, MountOptions: []string{}, Btrfs: []any{},
+		})
+	}
+	return out, nil
 }
 
 // --- plain layout -----------------------------------------------------------
