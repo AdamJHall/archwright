@@ -408,14 +408,21 @@ helpers and `installKernels`), and A6 (multiple LVM volumes for a separate `/hom
 `system.ntp` toggle), and C4 (`dotfiles.manager`: chezmoi/yadm/bare-git/none). See the Wave 3
 retrospective below.
 
-**Wave 4 landed** the TUI conversion (✅ scrollable bubbletea viewport behind `--plain`,
-output routed through a swappable `ui` sink + `teaWriter` pump), snapper provisioning
-(✅ `internal/stages/snapper.go`, Order 25, no-op unless `btrfs` + `snapshots: snapper`),
-the `--from`/`--to` stage-resume window (✅ `stages.Within` post-filter), and the
-declarative-install trio from `docs/declarative-installs.md`: D1 explicit `pacstrap`
-(✅ replaces `pacstrap_extra` + the in-code base set; advisory preflight warnings), D2
-explicit `flatpak_remotes` + per-app `remote:appid` (✅ no implicit Flathub), and D3
-explicit `kernel.base` (✅ replaces hardcoded `Kernels: [linux]`). See the Wave 4
+**Wave 4 landed** snapper provisioning (✅ `internal/stages/snapper.go`, Order 25, no-op
+unless `btrfs` + `snapshots: snapper`), the `--from`/`--to` stage-resume window
+(✅ `stages.Within` post-filter), and the declarative-install trio from
+`docs/declarative-installs.md`: D1 explicit `pacstrap` (✅ replaces `pacstrap_extra` + the
+in-code base set; advisory preflight warnings), D2 explicit `flatpak_remotes` + per-app
+`remote:appid` (✅ no implicit Flathub), and D3 explicit `kernel.base` (✅ replaces hardcoded
+`Kernels: [linux]`).
+
+The **TUI conversion was built and then reverted** (❌ not landed). A scrollable bubbletea
+viewport works for streamed output, but the alt-screen owns stdin, so interactive subprocess
+prompts can't be answered inside it — and archwright runs arbitrary, unpredictably-interactive
+user shell blobs (`repos[].setup`, e.g. `cachyos-repo.sh`'s Y/N questions). Surfacing those
+without dropping them out of the viewport needs a full PTY multiplexer (brittle for curses
+apps/password prompts, heavy for a single-machine tool). We reverted to plain streaming — the
+original deliberate design (the "no bubbletea spinner" gotcha) was right. See the Wave 4
 retrospective below.
 
 **Next wave starts here:** the still-deferred **remote/layered-config** item (big, documented
@@ -602,6 +609,18 @@ to watch:
   new files, C's `stages.Within`). main.go's A↔C contention **auto-merged** because A
   deliberately left the `stages.Select(...)` line + empty-check intact and C inserted its
   one filter line right after — the handoff's "keep the shared line stable" rule paid off.
+- **The TUI was built, then reverted in VM testing — a design dead-end worth remembering.**
+  The viewport rendered streamed output fine, but two stdin problems surfaced live: (1) a
+  `strings.Builder` *value* field in the bubbletea model panicked ("illegal use of non-zero
+  Builder copied by value") because the Elm loop value-copies the model every Update — fixed
+  with a `*strings.Builder`; (2) more fundamentally, the alt-screen owns stdin, so interactive
+  subprocess prompts can't be answered inside it. We patched the *known* prompts (pre-cache
+  sudo, hoist the install ERASE/password ahead of the alt-screen), but `repos[].setup` runs
+  **arbitrary** user shell (e.g. `cachyos-repo.sh`'s Y/N) that prompts unpredictably. The only
+  real fix is a PTY multiplexer (brittle for curses/password prompts, heavy here), so we
+  reverted to plain streaming. **Lesson:** the original "no bubbletea spinner" gotcha encoded a
+  real constraint — a capture-everything TUI fights a tool whose job is running interactive
+  subprocesses. Don't re-attempt without a PTY plan and VM testing up front.
 - **The real merge cost was the declarative trio sharing required-field fixtures.** D1
   (`pacstrap` now `required,min=1`) and D3 (`kernel.base` now `required,min=1`) each added a
   line to the *same anchor* in ~15 inline-YAML fixtures, so every one conflicted. Resolution
