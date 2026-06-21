@@ -20,13 +20,26 @@ func ensureTool(ctx *Context, bin, pkg string) error {
 	return ctx.R.Root("pacman", "-S", "--needed", "--noconfirm", pkg)
 }
 
-// ensureKernelParam adds a single token to GRUB_CMDLINE_LINUX_DEFAULT in
-// /etc/default/grub, idempotently (grep-guarded sed).
+// ensureKernelParam adds a single kernel command-line token, idempotently. It is
+// the bootloader-aware seam for kernel-cmdline edits: today only GRUB is supported,
+// so it appends tok to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub (grep-guarded
+// sed). A future systemd-boot branch would edit /etc/kernel/cmdline here instead
+// (keyed off the configured bootloader), keeping all cmdline knowledge in one place.
 func ensureKernelParam(ctx *Context, tok string) error {
 	return ctx.R.Shell(fmt.Sprintf(
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\b%[1]s\b' /etc/default/grub || `+
 			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1%[1]s /' /etc/default/grub`,
 		tok))
+}
+
+// regenerateBootConfig regenerates the bootloader's generated configuration after a
+// kernel-cmdline or theme change. It is the bootloader-aware seam for the
+// "apply the config" step: today only GRUB is supported, so it runs
+// grub-mkconfig -o /boot/grub/grub.cfg through Root. A future systemd-boot branch
+// would no-op here (systemd-boot reads /etc/kernel/cmdline directly, no regen step),
+// keyed off the configured bootloader.
+func regenerateBootConfig(ctx *Context) error {
+	return ctx.R.Root("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 }
 
 // cloneBuild git-clones a repo into a temp dir, runs inCheckout from within it,
