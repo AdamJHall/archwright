@@ -38,6 +38,10 @@ type Config struct {
 		Groups []string `yaml:"groups"`
 	} `yaml:"user"`
 
+	Stages struct {
+		Disable []string `yaml:"disable"` // stage names to skip without emptying their config
+	} `yaml:"stages"`
+
 	Disks struct {
 		ESP struct {
 			Device string `yaml:"device" validate:"required,startswith=/dev/"`
@@ -64,7 +68,13 @@ type Config struct {
 	PacstrapExtra []string     `yaml:"pacstrap_extra"`
 	Kernel        KernelConfig `yaml:"kernel"`
 	Flatpaks      []string     `yaml:"flatpaks"`
-	AUR           []string     `yaml:"aur"`
+	// FlatpakRemotes are extra flatpak remotes registered (in addition to the
+	// always-added built-in flathub remote) before installing apps.
+	FlatpakRemotes []FlatpakRemote `yaml:"flatpak_remotes" validate:"dive"`
+	AUR            []string        `yaml:"aur"`
+	// AurHelper selects the AUR helper to install and use in Phase B. Empty
+	// defaults to "yay" (today's behavior); "paru" is argument-compatible.
+	AurHelper string `yaml:"aur_helper" validate:"omitempty,oneof=yay paru"`
 
 	Plymouth struct {
 		Theme string `yaml:"theme"`
@@ -86,11 +96,20 @@ type Config struct {
 		Wallpaper   string `yaml:"wallpaper"`
 	} `yaml:"kde"`
 
+	// Desktop selects which desktop-environment stage runs in Phase B. Empty (the
+	// default) preserves today's behavior: the KDE stage runs. Any other value
+	// makes the KDE stage a clean no-op (other DEs are not yet implemented).
+	Desktop struct {
+		Environment string `yaml:"environment" validate:"omitempty,oneof=kde gnome hyprland sway none"`
+	} `yaml:"desktop"`
+
 	Chezmoi struct {
 		Repo string `yaml:"repo" validate:"omitempty,url"`
 	} `yaml:"chezmoi"`
 
 	Setup SetupConfig `yaml:"setup"`
+
+	Hooks []Hook `yaml:"hooks" validate:"dive"`
 }
 
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
@@ -120,6 +139,25 @@ type Clone struct {
 	Dest   string `yaml:"dest"   validate:"required"`
 	Ref    string `yaml:"ref"`
 	Update bool   `yaml:"update"`
+}
+
+// Hook is a user-defined command run at a named lifecycle point. Exactly one of
+// Run (an inline shell snippet) or Script (a path to a script file) is set.
+type Hook struct {
+	Name   string            `yaml:"name"`
+	At     string            `yaml:"at"     validate:"required,hookpoint"`
+	Run    string            `yaml:"run"    validate:"required_without=Script"`
+	Script string            `yaml:"script" validate:"omitempty,file"`
+	Root   bool              `yaml:"root"` // run privileged (Root) vs unprivileged (Cmd/Shell)
+	Env    map[string]string `yaml:"env"`
+	Dir    string            `yaml:"dir"`
+}
+
+// FlatpakRemote is an extra flatpak remote registered before installing apps.
+// The built-in "flathub" remote is always added; list others here.
+type FlatpakRemote struct {
+	Name string `yaml:"name" validate:"required"`
+	URL  string `yaml:"url"  validate:"required,url"`
 }
 
 // Repo is a custom pacman repository. It is configured in Phase A's
@@ -264,6 +302,25 @@ func newValidator() *validator.Validate {
 		return sizeRe.MatchString(fl.Field().String())
 	})
 
+	// Custom rule: a hook lifecycle point — one of the four global points, or a
+	// per-stage "before:<stage>"/"after:<stage>" with a non-empty stage token.
+	// The existence of the named stage is validated elsewhere (the stages package
+	// owns the registry), keeping this package dependency-free.
+	_ = v.RegisterValidation("hookpoint", func(fl validator.FieldLevel) bool {
+		at := fl.Field().String()
+		switch at {
+		case "pre-install", "post-install", "pre-bootstrap", "post-bootstrap":
+			return true
+		}
+		if t, ok := strings.CutPrefix(at, "before:"); ok {
+			return t != ""
+		}
+		if t, ok := strings.CutPrefix(at, "after:"); ok {
+			return t != ""
+		}
+		return false
+	})
+
 	return v
 }
 
@@ -290,6 +347,10 @@ func describe(fe validator.FieldError) string {
 		return "must be a valid hostname"
 	case "size":
 		return "must be a size like 64GiB"
+	case "hookpoint":
+		return `must be a lifecycle point: pre-install, post-install, pre-bootstrap, post-bootstrap, or before:<stage>/after:<stage>`
+	case "required_without":
+		return "is required when script is not set"
 	default:
 		return fmt.Sprintf("failed rule %q", fe.Tag())
 	}

@@ -1,11 +1,15 @@
 // Command archwright is the single-binary, declarative Arch Linux installer.
 //
-//	archwright install   [--dry-run] [--only <stage>] [--config <file>] [--yes]
-//	archwright bootstrap [--dry-run] [--only <stage>] [--config <file>]
-//	archwright validate  [--config <file>]
+//	archwright install     [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>] [--yes]
+//	archwright bootstrap   [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>]
+//	archwright validate    [--config <file>]
+//	archwright list-stages
 //
 // Phase A (install) runs from the Arch live ISO as root; Phase B (bootstrap)
 // runs on the booted system as your user. Stages live in internal/stages.
+// Stage selection: --only (single stage) wins; otherwise --skip and the
+// stages.disable config list subtract from the full set. User-defined hooks fire
+// at lifecycle points (pre/post-{install,bootstrap}, before:/after:<stage>).
 package main
 
 import (
@@ -27,6 +31,7 @@ var version = "dev"
 var (
 	flagDryRun bool
 	flagOnly   string
+	flagSkip   []string
 	flagConfig string
 	flagYes    bool
 )
@@ -42,6 +47,7 @@ func main() {
 	pf := root.PersistentFlags()
 	pf.BoolVar(&flagDryRun, "dry-run", false, "print commands instead of running them")
 	pf.StringVar(&flagOnly, "only", "", "run a single stage by name or number")
+	pf.StringArrayVar(&flagSkip, "skip", nil, "skip a stage by name or number (repeatable)")
 	pf.StringVar(&flagConfig, "config", "config.yaml", "path to config.yaml")
 
 	installCmd := &cobra.Command{
@@ -68,12 +74,30 @@ func main() {
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
+			if err := stages.ValidateHooks(cfg); err != nil {
+				return err
+			}
 			ui.OK("config valid: %s", flagConfig)
 			return nil
 		},
 	}
 
-	root.AddCommand(installCmd, bootstrapCmd, validateCmd)
+	listStagesCmd := &cobra.Command{
+		Use:   "list-stages",
+		Short: "List all registered stages with their order, name and phase",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			for _, s := range stages.All() {
+				phase := "Install"
+				if s.Phase() == stages.Bootstrap {
+					phase = "Bootstrap"
+				}
+				fmt.Printf("%-10s %-4d %s\n", phase, s.Order(), s.Name())
+			}
+			return nil
+		},
+	}
+
+	root.AddCommand(installCmd, bootstrapCmd, validateCmd, listStagesCmd)
 
 	if err := root.Execute(); err != nil {
 		ui.Error(err.Error())
@@ -93,15 +117,31 @@ func runPhase(p stages.Phase) error {
 		ConfigPath: flagConfig,
 	}
 
-	selected := stages.For(p, flagOnly)
+	if err := stages.ValidateHooks(cfg); err != nil {
+		return err
+	}
+
+	selected := stages.Select(p, flagOnly, flagSkip, cfg.Stages.Disable)
 	if len(selected) == 0 {
-		return fmt.Errorf("no stages matched (--only %q)", flagOnly)
+		return fmt.Errorf("no stages matched (--only %q, --skip %v, stages.disable %v)", flagOnly, flagSkip, cfg.Stages.Disable)
+	}
+	if err := stages.FireHooks(ctx, stages.PhasePre(p)); err != nil {
+		return err
 	}
 	for _, s := range selected {
+		if err := stages.FireHooks(ctx, "before:"+s.Name()); err != nil {
+			return err
+		}
 		ui.Header(s.Order(), s.Name())
 		if err := s.Run(ctx); err != nil {
 			return fmt.Errorf("stage %s: %w", s.Name(), err)
 		}
+		if err := stages.FireHooks(ctx, "after:"+s.Name()); err != nil {
+			return err
+		}
+	}
+	if err := stages.FireHooks(ctx, stages.PhasePost(p)); err != nil {
+		return err
 	}
 	ui.OK("done")
 	return nil

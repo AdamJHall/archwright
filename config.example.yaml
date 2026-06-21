@@ -2,6 +2,11 @@
 #
 # Copy to config.yaml and edit:   cp config.example.yaml config.yaml
 # config.yaml is gitignored so your real machine config stays out of git.
+#
+# Any value may reference an environment variable using dollar-brace VAR syntax;
+# it is substituted from the environment when the config is loaded (an unset
+# variable is an error, and a doubled dollar sign is a literal one). Keeps secrets
+# and per-machine values out of the file.
 
 system:
   hostname: arch-box
@@ -16,6 +21,13 @@ user:
   shell: /usr/bin/zsh
   # Supplementary groups. `wheel` gives sudo (configured in stage 50).
   groups: [wheel]
+
+# --- stage selection (optional) ---------------------------------------------
+# Skip stages without emptying their config blocks (the persisted equivalent of
+# the repeatable --skip flag). Match by stage name or its numeric order — see
+# `archwright list-stages`. The --only flag, when given, overrides this.
+# stages:
+#   disable: [plymouth, grub-theme]
 
 # --- disk layout ------------------------------------------------------------
 # Disk 1 (the `esp.device`) is partitioned: ESP + remainder-as-LVM-PV. Any other
@@ -107,9 +119,17 @@ flatpaks:                        # installed from Flathub
   - org.mozilla.firefox
   - com.stremio.Stremio
 
-aur:                             # built via yay
+# Extra flatpak remotes registered before installing (the built-in Flathub remote
+# is always added, so the apps above keep working). Add others you install from
+# via hooks or your dotfiles.
+# flatpak_remotes:
+#   - { name: flathub-beta, url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo }
+
+aur:                             # built via the AUR helper (see aur_helper)
   - 1password
   - 1password-cli
+
+aur_helper: yay                  # yay (default) | paru — installed in Phase B, used for `aur`
 
 # --- boot splash / theming --------------------------------------------------
 plymouth:
@@ -123,6 +143,12 @@ grub:
     # url: https://example.com/theme.tar.gz   # used when source: url
 
 # --- desktop ----------------------------------------------------------------
+# Which desktop environment Phase B themes. Empty or `kde` runs the KDE stage
+# below; any other value makes that stage a clean no-op — route that DE's setup
+# through `hooks` and your dotfiles instead (only KDE has a built-in stage).
+desktop:
+  environment: kde               # kde | gnome | hyprland | sway | none
+
 kde:
   look_and_feel: org.kde.breezedark.desktop
   color_scheme: BreezeDark
@@ -168,3 +194,26 @@ setup:
     - clone: { url: https://github.com/catppuccin/tmux, dest: ~/.config/tmux/plugins/tmux }
     # Example of a non-clone installer (runs in place, between/after clones):
     # - command: curl -sS https://starship.rs/install.sh | sh -s -- -y
+
+# --- hooks (optional) -------------------------------------------------------
+# Run your own commands at lifecycle points instead of writing a Go stage — the
+# general escape hatch for snap/cargo/gsettings/etc. `at` is one of the global
+# points (pre-install, post-install, pre-bootstrap, post-bootstrap) or a per-stage
+# point before:<stage> / after:<stage> (stage by name; see `archwright list-stages`).
+# Each hook sets exactly one of `run` (an inline shell snippet) or `script` (a path
+# to a script file). Optional: `root` to run privileged, `env` for extra variables,
+# `dir` for the working directory. Hooks are dry-run-aware like everything else.
+# hooks:
+#   - name: rust toolchain
+#     at: after:packages
+#     run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+#   - name: enable bluetooth
+#     at: post-bootstrap
+#     root: true
+#     run: systemctl enable --now bluetooth
+#   - name: provision
+#     at: post-bootstrap
+#     script: /opt/provision.sh    # an existing file path (validated; ~ is not expanded)
+#     dir: /tmp                     # working directory (absolute; ~ is not expanded)
+#     env:
+#       PROFILE: desktop

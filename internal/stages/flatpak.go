@@ -29,6 +29,11 @@ func (flatpak) Run(ctx *Context) error {
 		"https://flathub.org/repo/flathub.flatpakrepo"); err != nil {
 		return err
 	}
+	for _, rem := range ctx.Cfg.FlatpakRemotes {
+		if err := ctx.R.Cmd("flatpak", "remote-add", "--if-not-exists", rem.Name, rem.URL); err != nil {
+			return err
+		}
+	}
 	if err := ctx.R.Cmd("flatpak", append([]string{"install", "-y", "--noninteractive", "flathub"}, apps...)...); err != nil {
 		return err
 	}

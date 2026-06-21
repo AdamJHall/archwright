@@ -2,9 +2,10 @@ package stages
 
 import "github.com/AdamJHall/archwright/internal/ui"
 
-// aur installs AUR packages via yay. No per-package special-casing: yay imports
-// any missing PGP keys a PKGBUILD declares (validpgpkeys) itself under
-// --noconfirm, including 1Password's, so this stays generic.
+// aur installs AUR packages via the configured AUR helper (yay by default, or
+// paru). No per-package special-casing: the helper imports any missing PGP keys
+// a PKGBUILD declares (validpgpkeys) itself under --noconfirm, including
+// 1Password's, so this stays generic.
 type aur struct{}
 
 func init() { register(aur{}) }
@@ -20,5 +21,5 @@ func (aur) Run(ctx *Context) error {
 		return nil
 	}
 	args := append([]string{"-S", "--needed", "--noconfirm"}, pkgs...)
-	return ctx.R.Cmd("yay", args...)
+	return ctx.R.Cmd(aurHelper(ctx.Cfg), args...)
 }
