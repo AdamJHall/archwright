@@ -123,17 +123,43 @@ type MirrorConfig struct {
 	Protocols []string `yaml:"protocols" validate:"dive,oneof=https http rsync ftp"` // --protocol
 }
 
-// Load reads and parses the YAML file at path.
+// Load reads, env-substitutes, and parses the YAML file at path.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
+	expanded, err := expandEnv(data)
+	if err != nil {
+		return nil, err
+	}
 	var c Config
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := yaml.Unmarshal(expanded, &c); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &c, nil
+}
+
+// expandEnv substitutes ${VAR}/$VAR references in the raw config with the
+// process environment, so secrets and per-machine values can stay out of the
+// (gitignored) file. An unset variable is an error rather than a silent blank.
+// Write "$$" for a literal "$" (e.g. inside a shell snippet meant for runtime).
+func expandEnv(data []byte) ([]byte, error) {
+	var missing []string
+	out := os.Expand(string(data), func(name string) string {
+		if name == "$" { // os.Expand maps the "$" in "$$" through here
+			return "$"
+		}
+		if v, ok := os.LookupEnv(name); ok {
+			return v
+		}
+		missing = append(missing, name)
+		return ""
+	})
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
+	}
+	return []byte(out), nil
 }
 
 // Validate runs the struct-tag schema and returns every failure joined together,
