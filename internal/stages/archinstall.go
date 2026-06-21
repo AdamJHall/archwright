@@ -103,10 +103,13 @@ func (archinstallStage) Run(ctx *Context) error {
 // remount the root LV and the ESP (kernels/GRUB live on /boot) for the chroot
 // work, then unmount.
 func postInstall(ctx *Context) error {
-	lv := fmt.Sprintf("/dev/%s/%s", ctx.Cfg.Disks.LVM.VG, ctx.Cfg.Disks.LVM.LV)
+	rootDev, err := rootDevice(ctx.Cfg)
+	if err != nil {
+		return err
+	}
 	esp := partDev(ctx.Cfg.Disks.ESP.Device, 1)
 
-	ctx.R.Try("mount", lv, "/mnt")
+	ctx.R.Try("mount", rootDev, "/mnt")
 	ctx.R.Try("mount", esp, "/mnt/boot")
 
 	if err := setupSwapfile(ctx); err != nil {
@@ -146,6 +149,12 @@ func postInstall(ctx *Context) error {
 // swapon rejects. The target root is mounted at /mnt, so the in-system path is
 // /swapfile. No-op if no swap size is configured.
 func setupSwapfile(ctx *Context) error {
+	// Only the swapfile swap type creates /swapfile here; zram is handled by
+	// archinstall, a swap partition is created by the layout builder, and none
+	// skips swap entirely.
+	if ctx.Cfg.Disks.Swap.EffectiveType() != "swapfile" {
+		return nil
+	}
 	size := ctx.Cfg.Disks.Swap.Size
 	if size == "" {
 		return nil
@@ -200,14 +209,40 @@ func runReflector(ctx *Context) error {
 	return ctx.R.Root("reflector", args...)
 }
 
-// wipedDevices is the set of whole devices archinstall will wipe: disk 1 plus
-// every extra whole-disk PV (PV paths that aren't a partition of disk 1).
+// rootDevice returns the path the freshly-installed root filesystem lives on, so
+// postInstall can remount it for chroot work after archinstall unmounts the
+// target. It depends on the layout: the LVM root LV, or the root partition on
+// disk 1 for plain/btrfs (partition 1 is the ESP; with a swap partition the root
+// is partition 3, otherwise partition 2).
+func rootDevice(cfg *config.Config) (string, error) {
+	switch cfg.Disks.EffectiveLayout() {
+	case "lvm":
+		if cfg.Disks.LVM == nil {
+			return "", fmt.Errorf("disks.lvm is required for the lvm layout")
+		}
+		return fmt.Sprintf("/dev/%s/%s", cfg.Disks.LVM.VG, cfg.Disks.LVM.LV), nil
+	case "plain", "btrfs":
+		rootIdx := 2
+		if cfg.Disks.Swap.EffectiveType() == "partition" {
+			rootIdx = 3
+		}
+		return partDev(cfg.Disks.ESP.Device, rootIdx), nil
+	default:
+		return "", fmt.Errorf("unknown disks.layout %q", cfg.Disks.Layout)
+	}
+}
+
+// wipedDevices is the set of whole devices archinstall will wipe: disk 1 plus, for
+// the LVM layout, every extra whole-disk PV (PV paths that aren't a partition of
+// disk 1). Plain/btrfs use only disk 1.
 func wipedDevices(cfg *config.Config) []string {
 	disk1 := cfg.Disks.ESP.Device
 	devs := []string{disk1}
-	for _, pv := range cfg.Disks.LVM.PVs {
-		if !strings.HasPrefix(pv, disk1) {
-			devs = append(devs, pv)
+	if cfg.Disks.LVM != nil {
+		for _, pv := range cfg.Disks.LVM.PVs {
+			if !strings.HasPrefix(pv, disk1) {
+				devs = append(devs, pv)
+			}
 		}
 	}
 	return devs

@@ -39,6 +39,14 @@ var renderCases = []struct {
 		name: "ext4-sata",
 		geom: Geometry{"/dev/sda": 64 << 30}, // 64 GiB
 	},
+	{
+		name: "btrfs-subvols",
+		geom: Geometry{"/dev/nvme0n1": 256 << 30}, // 256 GiB
+	},
+	{
+		name: "lvm-zram",
+		geom: Geometry{"/dev/nvme0n1": 256 << 30}, // 256 GiB
+	},
 }
 
 // TestRenderGolden renders every fixture config against fixed geometry and
