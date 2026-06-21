@@ -393,6 +393,10 @@ checkout into `$HOME`; stow → punt to hooks.
 4. **Phase B selectors:** `desktop.environment` ✅, `aur_helper` ✅, flatpak remotes ✅
    (Wave 1, landed); decouple cmdline from Plymouth (C3) still pending.
 
+**Next wave starts here:** before any new feature work, land the three correctness
+follow-ups from the Wave 1 retrospective below — hooks `~`-expansion + the `script` `file`
+check, value-only env-substitution, and C3 — each with a test.
+
 Recurring theme: **prefer one good escape hatch (hooks + dotfiles repo) over many bespoke
 Go stages.**
 
@@ -419,7 +423,9 @@ agents** merged into one branch. What worked, and what to fix next:
 - **gofmt + build/vet/test after every merge.** Merges can leave struct-tag alignment
   unformatted (`gofmt -l` caught `config.go`). Worth a CI `gofmt -l` gate.
 
-### Concrete follow-ups found while dogfooding (fix in a future wave)
+### Concrete follow-ups found while dogfooding — **fix these in the next wave**
+These are small, high-value correctness fixes that came out of Wave 1; do them **first** in
+the next wave, before new feature work, and cover each with a test:
 - **Hooks `script`/`dir` don't expand `~`, and `script` is validated with `file`** (the
   path must exist at validate time). This is inconsistent with `setup`'s `expandHome`
   (`setup.go`). Recommend: run `script`/`dir` through `expandHome`, and reconsider the eager
