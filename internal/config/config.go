@@ -307,8 +307,13 @@ type Repo struct {
 // pacstraps the stock `linux` kernel for a bootable baseline; ReplaceStock removes
 // it afterwards (before first boot) so nothing lingers.
 type KernelConfig struct {
-	Packages     []string `yaml:"packages"`      // e.g. [linux-cachyos, linux-cachyos-headers]
-	Default      string   `yaml:"default"`       // GRUB top-level (default) kernel; must be one of Packages
+	// Base are the kernel(s) archinstall pacstraps for a bootable baseline. They
+	// must be available in the live ISO's official repos (the custom `repos:` are
+	// configured later, in the chroot), so a custom kernel like linux-cachyos
+	// belongs in Packages, not Base.
+	Base         []string `yaml:"base" validate:"required,min=1,dive,required"`
+	Packages     []string `yaml:"packages"`      // extra kernels installed in the chroot (post-repo-setup)
+	Default      string   `yaml:"default"`       // GRUB top-level (default) kernel; must be in Base ∪ Packages
 	ReplaceStock bool     `yaml:"replace_stock"` // remove the stock `linux` kernel after install
 }
 
@@ -437,8 +442,8 @@ func (c *Config) semanticErrors() []error {
 	if k.ReplaceStock && len(k.Packages) == 0 {
 		errs = append(errs, fmt.Errorf("kernel.replace_stock requires at least one kernel.packages entry (otherwise the system would have no kernel)"))
 	}
-	if k.Default != "" && !slices.Contains(k.Packages, k.Default) {
-		errs = append(errs, fmt.Errorf("kernel.default %q must be one of kernel.packages", k.Default))
+	if k.Default != "" && !slices.Contains(k.Base, k.Default) && !slices.Contains(k.Packages, k.Default) {
+		errs = append(errs, fmt.Errorf("kernel.default %q must be one of kernel.base or kernel.packages", k.Default))
 	}
 	for i, s := range c.Setup.Steps {
 		switch {

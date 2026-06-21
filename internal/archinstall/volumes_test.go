@@ -19,6 +19,8 @@ system:
 user:
   name: adam
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp:
@@ -96,6 +98,8 @@ system:
 user:
   name: adam
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -153,6 +157,8 @@ system:
 user:
   name: adam
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -194,6 +200,8 @@ system:
 user:
   name: adam
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}

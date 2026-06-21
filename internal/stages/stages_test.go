@@ -52,6 +52,7 @@ repos:
     include: /etc/pacman.d/chaotic-mirrorlist
 packages: [git, firefox]
 kernel:
+  base: [linux]
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true
@@ -145,8 +146,8 @@ func TestRegistry(t *testing.T) {
 		[]string{"preflight", "archinstall"},
 		[]int{0, 10})
 	check(Bootstrap,
-		[]string{"yay", "packages", "flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup"},
-		[]int{10, 20, 30, 40, 50, 60, 70, 80, 85})
+		[]string{"yay", "packages", "snapper", "flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup"},
+		[]int{10, 20, 25, 30, 40, 50, 60, 70, 80, 85})
 }
 
 func TestPlan_Archinstall(t *testing.T) {

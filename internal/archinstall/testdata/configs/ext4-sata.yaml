@@ -7,6 +7,8 @@ system:
 user:
   name: builder
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   esp:
     device: /dev/sda

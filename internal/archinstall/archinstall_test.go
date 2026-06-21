@@ -32,6 +32,8 @@ disks:
     pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 packages: [git, firefox]
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 `
 
 func testConfig(t *testing.T) *config.Config {

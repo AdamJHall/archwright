@@ -17,6 +17,8 @@ system:
 user:
   name: adam
 pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 `
 
 func TestValidate_DiskLayouts(t *testing.T) {

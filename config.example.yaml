@@ -162,13 +162,17 @@ packages:                        # official-repo packages (pacman -S --needed)
   - starship
   - fzf
 
-# Extra kernels, installed in Phase A from the repos above (so first boot already
-# runs them). archinstall always installs the stock `linux` for a bootable
-# baseline; replace_stock removes it before first boot so nothing lingers.
+# Kernels. `base` is what archinstall pacstraps for a bootable baseline (it MUST
+# be in the live ISO's official repos — the custom `repos:` above are only set up
+# later in the chroot — so a custom kernel like linux-cachyos belongs in
+# `packages`, NOT `base`). `packages` are extra kernels installed in Phase A from
+# the repos above, so first boot can already run them.
 kernel:
-  packages: [linux-cachyos, linux-cachyos-headers]
-  default: linux-cachyos         # GRUB default entry; must be one of packages
+  base: [linux]                  # pacstrapped baseline; official-repo kernels only
+  packages: [linux-cachyos, linux-cachyos-headers]   # extra kernels (installed in the chroot)
+  default: linux-cachyos         # GRUB default entry; must be in base ∪ packages
   replace_stock: true            # remove the stock `linux` kernel after install
+                                 # (redundant if you set base to your kernel directly)
 
 flatpaks:                        # installed from Flathub
   - com.spotify.Client

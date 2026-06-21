@@ -76,8 +76,8 @@ func pacstrapAdvisories(cfg *config.Config) []string {
 		out = append(out, "pacstrap has no CPU microcode (intel-ucode/amd-ucode) — recommended so the bootloader folds it into the early initramfs")
 	}
 
-	if !hasKernel(cfg.Pacstrap) && len(cfg.Kernel.Packages) == 0 {
-		out = append(out, "pacstrap has no kernel package and no kernel.packages are declared — the system may not boot")
+	if !hasKernel(cfg.Pacstrap) && len(cfg.Kernel.Base) == 0 && len(cfg.Kernel.Packages) == 0 {
+		out = append(out, "pacstrap has no kernel package and no kernel.base/kernel.packages are declared — the system may not boot")
 	}
 
 	return out
