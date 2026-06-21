@@ -50,7 +50,9 @@ func (plymouth) Run(ctx *Context) error {
 	if err := ctx.R.Root("plymouth-set-default-theme", "-R", theme); err != nil {
 		return err
 	}
-	if err := ctx.R.Root("grub-mkconfig", "-o", "/boot/grub/grub.cfg"); err != nil {
+	// Regenerating the bootloader config is GRUB's concern, not Plymouth's: route
+	// it through the shared bootloader-aware helper (same emitted command).
+	if err := regenerateBootConfig(ctx); err != nil {
 		return err
 	}
 
