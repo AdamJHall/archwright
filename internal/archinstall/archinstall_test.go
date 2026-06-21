@@ -31,7 +31,7 @@ disks:
     filesystem: xfs
     pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 packages: [git, firefox]
-pacstrap_extra: [intel-ucode]
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 `
 
 func testConfig(t *testing.T) *config.Config {
@@ -214,19 +214,30 @@ func TestBuild_Locale(t *testing.T) {
 	}
 }
 
-func TestBuild_PacstrapPackages(t *testing.T) {
-	cfg, geom := testConfig(t), testGeom()
-	c, _, _ := Build(cfg, geom, "x")
-	// The pacstrap list is the bootstrap minimum plus the configured extras.
-	if !slices.Contains(c.Packages, "base-devel") {
-		t.Errorf("pacstrap packages missing bootstrap default base-devel: %v", c.Packages)
+// Pacstrap is rendered verbatim into Packages — nothing prepended in code.
+func TestBuild_PacstrapVerbatim(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.System.Hostname = "h"
+	cfg.System.Timezone = "Europe/London"
+	cfg.System.Locale = "en_GB.UTF-8"
+	cfg.System.Keymap = "uk"
+	cfg.User.Name = "adam"
+	cfg.Disks.ESP = config.ESPConfig{Device: "/dev/nvme0n1", Size: "1GiB"}
+	cfg.Disks.Swap = config.SwapConfig{Type: "zram"}
+	cfg.Disks.LVM = &config.LVMLayout{VG: "vg0", LV: "root", Filesystem: "xfs", PVs: []string{"/dev/nvme0n1p2"}}
+	cfg.Pacstrap = []string{"a", "b", "c"}
+
+	c, _, err := Build(cfg, Geometry{"/dev/nvme0n1": 256 << 30}, "x")
+	if err != nil {
+		t.Fatalf("Build: %v", err)
 	}
-	if !slices.Contains(c.Packages, "intel-ucode") {
-		t.Errorf("pacstrap packages missing pacstrap_extra intel-ucode: %v", c.Packages)
+	if want := []string{"a", "b", "c"}; !slices.Equal(c.Packages, want) {
+		t.Errorf("Packages = %v, want exactly %v (no prepend)", c.Packages, want)
 	}
-	// The shared bootstrapPackages default must not have been mutated.
-	if slices.Contains(bootstrapPackages, "intel-ucode") {
-		t.Error("bootstrapPackages default was mutated by Build")
+	// Build must not alias the caller's slice.
+	c.Packages[0] = "MUTATED"
+	if cfg.Pacstrap[0] != "a" {
+		t.Errorf("Build aliased cfg.Pacstrap: got %q", cfg.Pacstrap[0])
 	}
 }
 

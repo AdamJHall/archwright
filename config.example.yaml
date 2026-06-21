@@ -138,12 +138,18 @@ repos:
   #   keyserver: keyserver.ubuntu.com
   #   include: /etc/pacman.d/chaotic-mirrorlist
 
-# Extra packages added to the initial pacstrap (Phase A), so they're on the
-# system at first boot. Use for things that must precede first boot — notably
-# CPU microcode, which GRUB folds into the early initramfs at install time.
-# Everything else belongs in `packages` below (installed in Phase B).
-pacstrap_extra:
-  - intel-ucode                  # or amd-ucode
+# The COMPLETE Phase-A pacstrap set, rendered verbatim — nothing is added in
+# code. It must list everything the installed system needs at first boot.
+# preflight warns about recommended-but-absent entries but never re-adds them.
+# Most software belongs in `packages` below (installed in Phase B).
+pacstrap:
+  - base-devel                   # needed by Phase B to build the AUR helper
+  - git                          # same
+  - zsh                          # the user's login shell (user.shell)
+  - sudo                         # Phase B runs as the user via sudo
+  - networkmanager               # network at first boot
+  - efibootmgr                   # UEFI boot entry management
+  - intel-ucode                  # CPU microcode (or amd-ucode); folded into initramfs
 
 packages:                        # official-repo packages (pacman -S --needed)
   - base-devel

@@ -15,6 +15,7 @@ system:
   keymap: uk
 user:
   name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 disks:
   layout: btrfs
   esp:
