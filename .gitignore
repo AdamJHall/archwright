@@ -8,9 +8,6 @@
 # Local upstream archinstall checkout, kept only as a schema reference.
 /archinstall/
 
-# Claude Code local, per-machine settings (not shared).
-/.claude/settings.local.json
-
 # Editor / OS noise
 *.swp
 *~
