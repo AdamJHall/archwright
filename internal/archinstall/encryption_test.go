@@ -15,6 +15,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp:
@@ -41,6 +43,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: btrfs
   esp:

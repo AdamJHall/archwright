@@ -33,6 +33,7 @@ func cfgFromYAML(t *testing.T, y string) *config.Config {
 const lvmZramYAML = `
 system: {hostname: arch-zram, timezone: Europe/London, locale: en_GB.UTF-8, keymap: uk}
 user: {name: adam}
+kernel: {base: [linux]}
 disks:
   esp: {device: /dev/nvme0n1, size: 1GiB}
   swap: {type: zram}
@@ -50,6 +51,7 @@ func TestPlan_Archinstall_ZramSwap(t *testing.T) {
 const plainSwapPartYAML = `
 system: {hostname: arch-plain, timezone: Europe/London, locale: en_GB.UTF-8, keymap: uk}
 user: {name: adam}
+kernel: {base: [linux]}
 disks:
   layout: plain
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -68,6 +70,7 @@ func TestPlan_Archinstall_PlainSwapPartition(t *testing.T) {
 const plainNoSwapYAML = `
 system: {hostname: arch-plain, timezone: Europe/London, locale: en_GB.UTF-8, keymap: uk}
 user: {name: adam}
+kernel: {base: [linux]}
 disks:
   layout: plain
   esp: {device: /dev/nvme0n1, size: 1GiB}

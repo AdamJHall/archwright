@@ -15,6 +15,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   esp:
     device: /dev/nvme0n1

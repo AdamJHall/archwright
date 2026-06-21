@@ -16,6 +16,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 `
 
 func TestValidate_DiskLayouts(t *testing.T) {

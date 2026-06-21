@@ -18,6 +18,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp:
@@ -94,6 +96,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -150,6 +154,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -190,6 +196,8 @@ system:
   keymap: uk%s
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}

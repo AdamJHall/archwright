@@ -46,6 +46,8 @@ system:
   keymap: uk
 user:
   name: adam
+kernel:
+  base: [linux]
 disks:
   layout: plain
   esp:

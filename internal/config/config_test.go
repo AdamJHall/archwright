@@ -41,6 +41,7 @@ repos:
     setup: "cachyos-repo.sh --install"
 packages: [git]
 kernel:
+  base: [linux]
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true
@@ -217,9 +218,9 @@ func TestValidate_Errors(t *testing.T) {
 			want: []string{"kernel.replace_stock requires at least one kernel.packages"},
 		},
 		{
-			name: "default kernel not in packages",
+			name: "default kernel in neither base nor packages",
 			yaml: strings.Replace(validYAML, "default: linux-cachyos", "default: linux-zen", 1),
-			want: []string{`kernel.default "linux-zen" must be one of kernel.packages`},
+			want: []string{`kernel.default "linux-zen" must be one of kernel.base or kernel.packages`},
 		},
 		{
 			name: "bad reflector sort",

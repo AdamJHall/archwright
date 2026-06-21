@@ -51,6 +51,7 @@ repos:
     include: /etc/pacman.d/chaotic-mirrorlist
 packages: [git, firefox]
 kernel:
+  base: [linux]
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true

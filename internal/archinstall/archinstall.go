@@ -255,6 +255,17 @@ func espPartition(espBytes uint64) Partition {
 	}
 }
 
+// kernelBase is the baseline kernel(s) archinstall pacstraps, taken verbatim
+// from cfg.Kernel.Base. Validation (config.KernelConfig) guarantees it is
+// non-empty; the fallback to "linux" is defence-in-depth so a misconfigured
+// caller never renders a kernel-less, unbootable system.
+func kernelBase(cfg *config.Config) []string {
+	if len(cfg.Kernel.Base) == 0 {
+		return []string{"linux"}
+	}
+	return cfg.Kernel.Base
+}
+
 // Build renders cfg + probed geometry into an archinstall config and creds file.
 // password is used for both the user and root (a throwaway in VM/--yes runs).
 func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds, error) {
@@ -286,7 +297,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	c := &Config{
 		Lang:             "English",
 		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false},
-		Kernels:          []string{"linux"},
+		Kernels:          kernelBase(cfg),
 		Hostname:         cfg.System.Hostname,
 		Packages:         pkgs,
 		Timezone:         cfg.System.Timezone,
