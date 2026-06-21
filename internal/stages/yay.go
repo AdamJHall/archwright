@@ -25,10 +25,7 @@ func (yay) Run(ctx *Context) error {
 		return err
 	}
 	// Clone + build + clean in one shell so the temp dir and cwd are handled.
-	if err := ctx.R.Shell(
-		`tmp="$(mktemp -d)" && git clone https://aur.archlinux.org/yay-bin.git "$tmp" && ` +
-			`(cd "$tmp" && makepkg -si --noconfirm) && rm -rf "$tmp"`,
-	); err != nil {
+	if err := cloneBuild(ctx, "https://aur.archlinux.org/yay-bin.git", "makepkg -si --noconfirm"); err != nil {
 		return err
 	}
 	ui.OK("yay installed")

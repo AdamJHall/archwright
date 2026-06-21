@@ -28,9 +28,9 @@ func (grubtheme) Run(ctx *Context) error {
 			return fmt.Errorf("grub.theme.name required for source 'vinceliuice'")
 		}
 		// Clone + run the upstream installer (it sets GRUB_THEME and regenerates).
-		if err := ctx.R.Shell(fmt.Sprintf(
-			`tmp="$(mktemp -d)" && git clone --depth 1 https://github.com/vinceliuice/grub2-themes "$tmp" && `+
-				`(cd "$tmp" && sudo ./install.sh -t %s) && rm -rf "$tmp"`, t.Name)); err != nil {
+		if err := cloneBuild(ctx,
+			"--depth 1 https://github.com/vinceliuice/grub2-themes",
+			fmt.Sprintf("sudo ./install.sh -t %s", t.Name)); err != nil {
 			return err
 		}
 		ui.OK("GRUB theme %q installed", t.Name)
