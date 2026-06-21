@@ -1,6 +1,13 @@
 {
   "permissions": {
     "allow": [
+      "Edit",
+      "Write",
+      "Bash(git commit *)",
+      "Bash(git branch *)",
+      "Bash(git rev-parse *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
       "Bash(rm -rf install.sh bootstrap.sh lib post stages)",
       "Bash(rm -f README.md go/README.md)",
       "Bash(mv go/main.go go/go.mod go/go.sum go/.goreleaser.yaml go/internal .)",
