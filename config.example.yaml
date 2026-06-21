@@ -87,6 +87,16 @@ disks:
   #   device: /dev/nvme0n1     # single disk: ESP + one root partition, no LVM
   #   filesystem: ext4         # ext4 | xfs
 
+  # --- optional LUKS disk encryption ---
+  # Omit this block for no encryption (the default). The LUKS passphrase is the
+  # same install password archwright already collects — it is NOT stored here.
+  # encryption:
+  #   type: lvm_on_luks        # lvm_on_luks: encrypt the PV partitions, LVM on top
+  #                            #   (requires the lvm layout; archinstall limits this
+  #                            #   to at most 2 PVs)
+  #                            # luks: encrypt the single root partition
+  #                            #   (requires the plain or btrfs layout)
+
 # --- mirrors ----------------------------------------------------------------
 # Optional: run reflector in the live ISO before archinstall, so pacstrap (and
 # the installed system, which inherits the mirrorlist) use fast, recent mirrors.
