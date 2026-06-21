@@ -139,7 +139,7 @@ func TestValidate_Errors(t *testing.T) {
 				"system.hostname is required",
 				"user.name is required",
 				"disks.esp.device is required",
-				"disks.lvm.pvs must have at least 1 item(s)",
+				"disks.lvm is required when disks.layout is lvm",
 			},
 		},
 		{

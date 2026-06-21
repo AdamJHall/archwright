@@ -42,21 +42,7 @@ type Config struct {
 		Disable []string `yaml:"disable"` // stage names to skip without emptying their config
 	} `yaml:"stages"`
 
-	Disks struct {
-		ESP struct {
-			Device string `yaml:"device" validate:"required,startswith=/dev/"`
-			Size   string `yaml:"size"   validate:"required,size"`
-		} `yaml:"esp"`
-		Swap struct {
-			Size string `yaml:"size" validate:"required,size"`
-		} `yaml:"swap"`
-		LVM struct {
-			VG         string   `yaml:"vg"         validate:"required"`
-			LV         string   `yaml:"lv"         validate:"required"`
-			Filesystem string   `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
-			PVs        []string `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
-		} `yaml:"lvm"`
-	} `yaml:"disks"`
+	Disks DisksConfig `yaml:"disks"`
 
 	Mirrors  MirrorConfig `yaml:"mirrors"`
 	Repos    []Repo       `yaml:"repos" validate:"dive"`
@@ -110,6 +96,93 @@ type Config struct {
 	Setup SetupConfig `yaml:"setup"`
 
 	Hooks []Hook `yaml:"hooks" validate:"dive"`
+}
+
+// DisksConfig describes the disk layout archinstall should create. Layout is a
+// discriminator selecting one of the layout strategies; the matching sub-block
+// (LVM/Btrfs/Plain) must be present. Layout defaults to "lvm" when empty so
+// pre-existing configs (which never set it) keep their original behaviour.
+//
+// Cross-field rules (the right sub-block present for the chosen layout, swap-type
+// constraints) live in semanticErrors(), not in struct tags, because they span
+// fields.
+type DisksConfig struct {
+	// Layout selects the partitioning strategy: "lvm" (ESP + LVM-on-partitions
+	// root), "btrfs" (ESP + single btrfs root with subvolumes), or "plain" (ESP +
+	// single ext4/xfs root). Empty defaults to "lvm".
+	Layout string `yaml:"layout" validate:"omitempty,oneof=lvm btrfs plain"`
+
+	ESP  ESPConfig  `yaml:"esp"`
+	Swap SwapConfig `yaml:"swap"`
+
+	LVM   *LVMLayout   `yaml:"lvm"`   // required when layout is lvm (or empty)
+	Btrfs *BtrfsLayout `yaml:"btrfs"` // required when layout is btrfs
+	Plain *PlainLayout `yaml:"plain"` // required when layout is plain
+}
+
+// EffectiveLayout returns the configured layout with the empty-default applied.
+func (d DisksConfig) EffectiveLayout() string {
+	if d.Layout == "" {
+		return "lvm"
+	}
+	return d.Layout
+}
+
+// ESPConfig is the EFI system partition created on disk 1.
+type ESPConfig struct {
+	Device string `yaml:"device" validate:"required,startswith=/dev/"`
+	Size   string `yaml:"size"   validate:"required,size"`
+}
+
+// SwapConfig selects how swap is provided. Type defaults to "swapfile" (the
+// original behaviour) when empty:
+//   - swapfile: a post-install /swapfile sized from Size (the only LVM-compatible
+//     option; archinstall 4.x can't format a raw swap partition in an LVM layout).
+//   - zram: compressed RAM swap (archinstall's own `swap` flag); no on-disk swap.
+//   - partition: a real linux-swap partition (only valid for plain/btrfs layouts).
+//   - none: no swap at all.
+type SwapConfig struct {
+	Type string `yaml:"type" validate:"omitempty,oneof=swapfile zram partition none"`
+	Size string `yaml:"size" validate:"omitempty,size"`
+}
+
+// EffectiveType returns the configured swap type with the empty-default applied.
+func (s SwapConfig) EffectiveType() string {
+	if s.Type == "" {
+		return "swapfile"
+	}
+	return s.Type
+}
+
+// LVMLayout is the classic ESP + LVM-on-partitions root (the historical default).
+type LVMLayout struct {
+	VG         string   `yaml:"vg"         validate:"required"`
+	LV         string   `yaml:"lv"         validate:"required"`
+	Filesystem string   `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
+	PVs        []string `yaml:"pvs"        validate:"min=1,dive,startswith=/dev/"`
+}
+
+// PlainLayout is a single root partition with no LVM: ESP + root on one disk.
+type PlainLayout struct {
+	Device     string `yaml:"device"     validate:"required,startswith=/dev/"`
+	Filesystem string `yaml:"filesystem" validate:"required,oneof=xfs ext4"`
+}
+
+// BtrfsLayout is a single btrfs root partition carrying subvolumes (the common
+// snapshot-friendly desktop layout). Compress (e.g. "zstd" or "zstd:3") becomes a
+// compress= mount option; Snapshots selects an optional snapshot tool.
+type BtrfsLayout struct {
+	Device     string   `yaml:"device"     validate:"required,startswith=/dev/"`
+	Compress   string   `yaml:"compress"`
+	Snapshots  string   `yaml:"snapshots"  validate:"omitempty,oneof=snapper none"`
+	Subvolumes []Subvol `yaml:"subvolumes" validate:"dive"`
+}
+
+// Subvol is one btrfs subvolume and where it is mounted (e.g. {@, /} or
+// {@home, /home}).
+type Subvol struct {
+	Name       string `yaml:"name"       validate:"required"`
+	Mountpoint string `yaml:"mountpoint" validate:"required"`
 }
 
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
@@ -274,6 +347,41 @@ func (c *Config) semanticErrors() []error {
 		case s.Command == "" && s.Clone == nil:
 			errs = append(errs, fmt.Errorf("setup.steps[%d] must set either command or clone", i))
 		}
+	}
+	errs = append(errs, c.diskErrors()...)
+	return errs
+}
+
+// diskErrors covers the cross-field disk rules struct tags can't express: the
+// sub-block matching the chosen layout must be present (and unrelated ones absent
+// is tolerated but the matching one is required), and a swap partition is only
+// valid for partition-based layouts (not LVM).
+func (c *Config) diskErrors() []error {
+	var errs []error
+	d := c.Disks
+	switch d.EffectiveLayout() {
+	case "lvm":
+		if d.LVM == nil {
+			errs = append(errs, fmt.Errorf("disks.lvm is required when disks.layout is lvm"))
+		}
+	case "btrfs":
+		if d.Btrfs == nil {
+			errs = append(errs, fmt.Errorf("disks.btrfs is required when disks.layout is btrfs"))
+		}
+	case "plain":
+		if d.Plain == nil {
+			errs = append(errs, fmt.Errorf("disks.plain is required when disks.layout is plain"))
+		}
+	}
+
+	switch d.Swap.EffectiveType() {
+	case "swapfile", "partition":
+		if d.Swap.Size == "" {
+			errs = append(errs, fmt.Errorf("disks.swap.size is required when disks.swap.type is %s", d.Swap.EffectiveType()))
+		}
+	}
+	if d.Swap.EffectiveType() == "partition" && d.EffectiveLayout() == "lvm" {
+		errs = append(errs, fmt.Errorf("disks.swap.type partition is not supported with the lvm layout (use swapfile or zram)"))
 	}
 	return errs
 }
