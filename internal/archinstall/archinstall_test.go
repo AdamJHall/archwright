@@ -88,8 +88,8 @@ func TestBuild_DiskLayout(t *testing.T) {
 	if c.DiskConfig.ConfigType != "manual_partitioning" {
 		t.Errorf("config_type = %q", c.DiskConfig.ConfigType)
 	}
-	if c.Bootloader != "Grub" {
-		t.Errorf("bootloader = %q, want Grub", c.Bootloader)
+	if c.BootloaderConfig.Bootloader != "Grub" {
+		t.Errorf("bootloader = %q, want Grub", c.BootloaderConfig.Bootloader)
 	}
 	if c.Swap {
 		t.Error("swap (zram) should be false; we use a swap partition")

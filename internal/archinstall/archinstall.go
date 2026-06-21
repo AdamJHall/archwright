@@ -129,12 +129,23 @@ type LvmConfiguration struct {
 	VolGroups  []LvmVolumeGroup `json:"vol_groups"`
 }
 
-// DiskConfig mirrors DiskLayoutConfiguration.json().
+// DiskConfig mirrors DiskLayoutConfiguration.json(). disk_encryption is nested
+// here (the canonical location); there is no top-level disk_encryption.
 type DiskConfig struct {
 	ConfigType          string            `json:"config_type"` // "manual_partitioning"
 	DeviceModifications []Device          `json:"device_modifications"`
 	LvmConfig           *LvmConfiguration `json:"lvm_config"`
 	DiskEncryption      any               `json:"disk_encryption"` // null
+}
+
+// BootloaderConfig mirrors archinstall's modern bootloader_config object
+// (args.py BootloaderConfiguration). It replaces the deprecated bare
+// `bootloader: "Grub"` string. Bootloader is one of "Grub", "Systemd-boot",
+// "Efistub", "Limine", "Refind", "No bootloader"; uki/removable default false.
+type BootloaderConfig struct {
+	Bootloader string `json:"bootloader"`
+	UKI        bool   `json:"uki"`
+	Removable  bool   `json:"removable"`
 }
 
 // LocaleConfig mirrors locale_config.
@@ -144,22 +155,22 @@ type LocaleConfig struct {
 	SysLang  string `json:"sys_lang"`
 }
 
-// Config is the top-level archinstall --config file.
+// Config is the top-level archinstall --config file. Encryption, when used, is
+// nested under disk_config only — there is no top-level disk_encryption.
 type Config struct {
-	Lang           string            `json:"archinstall-language"`
-	Bootloader     string            `json:"bootloader"`
-	Kernels        []string          `json:"kernels"`
-	Hostname       string            `json:"hostname"`
-	Packages       []string          `json:"packages"`
-	Timezone       string            `json:"timezone"`
-	Ntp            bool              `json:"ntp"`
-	Swap           bool              `json:"swap"` // zram; false — we use a swap partition
-	LocaleConfig   LocaleConfig      `json:"locale_config"`
-	NetworkConfig  map[string]string `json:"network_config"`
-	DiskConfig     DiskConfig        `json:"disk_config"`
-	DiskEncryption any               `json:"disk_encryption"` // null
-	Version        string            `json:"version"`
-	ConfigVersion  string            `json:"config_version"`
+	Lang             string            `json:"archinstall-language"`
+	BootloaderConfig BootloaderConfig  `json:"bootloader_config"`
+	Kernels          []string          `json:"kernels"`
+	Hostname         string            `json:"hostname"`
+	Packages         []string          `json:"packages"`
+	Timezone         string            `json:"timezone"`
+	Ntp              bool              `json:"ntp"`
+	Swap             bool              `json:"swap"` // zram; true only for the zram swap type
+	LocaleConfig     LocaleConfig      `json:"locale_config"`
+	NetworkConfig    map[string]string `json:"network_config"`
+	DiskConfig       DiskConfig        `json:"disk_config"`
+	Version          string            `json:"version"`
+	ConfigVersion    string            `json:"config_version"`
 }
 
 // User mirrors a credentials-file user entry.
@@ -237,14 +248,14 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	// mutated across Build calls.
 	pkgs := append(append([]string{}, bootstrapPackages...), cfg.PacstrapExtra...)
 	c := &Config{
-		Lang:       "English",
-		Bootloader: "Grub",
-		Kernels:    []string{"linux"},
-		Hostname:   cfg.System.Hostname,
-		Packages:   pkgs,
-		Timezone:   cfg.System.Timezone,
-		Ntp:        true,
-		Swap:       useZram,
+		Lang:             "English",
+		BootloaderConfig: BootloaderConfig{Bootloader: "Grub", UKI: false, Removable: false},
+		Kernels:          []string{"linux"},
+		Hostname:         cfg.System.Hostname,
+		Packages:         pkgs,
+		Timezone:         cfg.System.Timezone,
+		Ntp:              true,
+		Swap:             useZram,
 		LocaleConfig: LocaleConfig{
 			KbLayout: cfg.System.Keymap, SysEnc: sysEnc, SysLang: sysLang,
 		},

@@ -1,11 +1,42 @@
 package archinstall
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/AdamJHall/archwright/internal/config"
 	"gopkg.in/yaml.v3"
 )
+
+// TestBuild_BootloaderConfig asserts the canonical bootloader_config object form
+// (not the deprecated bare "bootloader" string) and that there is no top-level
+// disk_encryption key (encryption is nested under disk_config only).
+func TestBuild_BootloaderConfig(t *testing.T) {
+	cfg := plainConfig(t)
+	c, _, err := Build(cfg, Geometry{"/dev/nvme0n1": 256 << 30}, "x")
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if c.BootloaderConfig.Bootloader != "Grub" || c.BootloaderConfig.UKI || c.BootloaderConfig.Removable {
+		t.Errorf("bootloader_config wrong: %+v", c.BootloaderConfig)
+	}
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	s := string(b)
+	if !strings.Contains(s, `"bootloader_config":`) {
+		t.Errorf("expected bootloader_config key, got: %s", s)
+	}
+	if strings.Contains(s, `"bootloader":"Grub","kernels"`) {
+		t.Error("found deprecated bare top-level bootloader string")
+	}
+	// disk_encryption must appear only nested in disk_config, never at top level.
+	if strings.Count(s, `"disk_encryption"`) != 1 {
+		t.Errorf("expected exactly one (nested) disk_encryption, got %d: %s", strings.Count(s, `"disk_encryption"`), s)
+	}
+}
 
 const plainYAML = `
 system:

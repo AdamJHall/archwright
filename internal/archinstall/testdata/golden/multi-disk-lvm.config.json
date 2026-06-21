@@ -1,6 +1,10 @@
 {
   "archinstall-language": "English",
-  "bootloader": "Grub",
+  "bootloader_config": {
+    "bootloader": "Grub",
+    "uki": false,
+    "removable": false
+  },
   "kernels": [
     "linux"
   ],
@@ -191,7 +195,6 @@
     },
     "disk_encryption": null
   },
-  "disk_encryption": null,
   "version": "4.3",
   "config_version": "4.3"
 }
