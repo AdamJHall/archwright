@@ -68,7 +68,13 @@ type Config struct {
 	PacstrapExtra []string     `yaml:"pacstrap_extra"`
 	Kernel        KernelConfig `yaml:"kernel"`
 	Flatpaks      []string     `yaml:"flatpaks"`
-	AUR           []string     `yaml:"aur"`
+	// FlatpakRemotes are extra flatpak remotes registered (in addition to the
+	// always-added built-in flathub remote) before installing apps.
+	FlatpakRemotes []FlatpakRemote `yaml:"flatpak_remotes" validate:"dive"`
+	AUR            []string        `yaml:"aur"`
+	// AurHelper selects the AUR helper to install and use in Phase B. Empty
+	// defaults to "yay" (today's behavior); "paru" is argument-compatible.
+	AurHelper string `yaml:"aur_helper" validate:"omitempty,oneof=yay paru"`
 
 	Plymouth struct {
 		Theme string `yaml:"theme"`
@@ -89,6 +95,13 @@ type Config struct {
 		CursorTheme string `yaml:"cursor_theme"`
 		Wallpaper   string `yaml:"wallpaper"`
 	} `yaml:"kde"`
+
+	// Desktop selects which desktop-environment stage runs in Phase B. Empty (the
+	// default) preserves today's behavior: the KDE stage runs. Any other value
+	// makes the KDE stage a clean no-op (other DEs are not yet implemented).
+	Desktop struct {
+		Environment string `yaml:"environment" validate:"omitempty,oneof=kde gnome hyprland sway none"`
+	} `yaml:"desktop"`
 
 	Chezmoi struct {
 		Repo string `yaml:"repo" validate:"omitempty,url"`
@@ -138,6 +151,13 @@ type Hook struct {
 	Root   bool              `yaml:"root"`   // run privileged (Root) vs unprivileged (Cmd/Shell)
 	Env    map[string]string `yaml:"env"`
 	Dir    string            `yaml:"dir"`
+}
+
+// FlatpakRemote is an extra flatpak remote registered before installing apps.
+// The built-in "flathub" remote is always added; list others here.
+type FlatpakRemote struct {
+	Name string `yaml:"name" validate:"required"`
+	URL  string `yaml:"url"  validate:"required,url"`
 }
 
 // Repo is a custom pacman repository. It is configured in Phase A's

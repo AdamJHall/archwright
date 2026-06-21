@@ -1,6 +1,7 @@
 package stages
 
 import (
+	"fmt"
 	"os/exec"
 
 	"github.com/AdamJHall/archwright/internal/ui"
@@ -18,6 +19,11 @@ func (kde) Name() string { return "kde" }
 func (kde) Phase() Phase { return Bootstrap }
 
 func (kde) Run(ctx *Context) error {
+	if de := ctx.Cfg.Desktop.Environment; de != "" && de != "kde" {
+		ui.Info(fmt.Sprintf("desktop.environment is %q — skipping KDE stage", de))
+		return nil
+	}
+
 	k := ctx.Cfg.KDE
 
 	// tool, value, optional leading flag (lookandfeel uses -a).
