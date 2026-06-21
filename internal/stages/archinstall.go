@@ -220,7 +220,22 @@ func rootDevice(cfg *config.Config) (string, error) {
 		if cfg.Disks.LVM == nil {
 			return "", fmt.Errorf("disks.lvm is required for the lvm layout")
 		}
-		return fmt.Sprintf("/dev/%s/%s", cfg.Disks.LVM.VG, cfg.Disks.LVM.LV), nil
+		// Single-LV mode names the root LV directly; multi-volume mode leaves LV
+		// empty, so the root LV is the volume mounted at "/" (validation guarantees
+		// exactly one exists).
+		lv := cfg.Disks.LVM.LV
+		if lv == "" {
+			for _, v := range cfg.Disks.LVM.Volumes {
+				if v.Mountpoint == "/" {
+					lv = v.Name
+					break
+				}
+			}
+		}
+		if lv == "" {
+			return "", fmt.Errorf("no root LVM volume (mounted at /) found")
+		}
+		return fmt.Sprintf("/dev/%s/%s", cfg.Disks.LVM.VG, lv), nil
 	case "plain", "btrfs":
 		rootIdx := 2
 		if cfg.Disks.Swap.EffectiveType() == "partition" {

@@ -138,13 +138,26 @@ type LvmConfiguration struct {
 	VolGroups  []LvmVolumeGroup `json:"vol_groups"`
 }
 
+// DiskEncryption mirrors archinstall's DiskEncryption.json(). encryption_type is
+// "luks" (encrypt the single root partition) or "lvm_on_luks" (encrypt the PV
+// partitions under LVM). partitions holds the encrypted partition obj_ids (the
+// root partition for luks, the PV partitions for lvm_on_luks); lvm_volumes holds
+// LV obj_ids for the luks_on_lvm variant. The password is supplied separately as
+// the top-level encryption_password field.
+type DiskEncryption struct {
+	EncryptionType string   `json:"encryption_type"` // "luks"/"lvm_on_luks"
+	Partitions     []string `json:"partitions"`
+	LvmVolumes     []string `json:"lvm_volumes"`
+}
+
 // DiskConfig mirrors DiskLayoutConfiguration.json(). disk_encryption is nested
-// here (the canonical location); there is no top-level disk_encryption.
+// here (the canonical location); there is no top-level disk_encryption. It is a
+// pointer so the unencrypted case renders as null (byte-identical to before).
 type DiskConfig struct {
 	ConfigType          string            `json:"config_type"` // "manual_partitioning"
 	DeviceModifications []Device          `json:"device_modifications"`
 	LvmConfig           *LvmConfiguration `json:"lvm_config"`
-	DiskEncryption      any               `json:"disk_encryption"` // null
+	DiskEncryption      *DiskEncryption   `json:"disk_encryption"` // null when unencrypted
 }
 
 // BootloaderConfig mirrors archinstall's modern bootloader_config object
@@ -155,6 +168,17 @@ type BootloaderConfig struct {
 	Bootloader string `json:"bootloader"`
 	UKI        bool   `json:"uki"`
 	Removable  bool   `json:"removable"`
+}
+
+// archBootloader maps our config bootloader kind ("grub"/"systemd-boot") to
+// archinstall's bootloader string. "grub" yields the exact same "Grub" value as
+// before; "systemd-boot" maps to archinstall's "Systemd-boot". Any unknown kind
+// falls back to "Grub" (validation already restricts the set upstream).
+func archBootloader(kind string) string {
+	if kind == "systemd-boot" {
+		return "Systemd-boot"
+	}
+	return "Grub"
 }
 
 // LocaleConfig mirrors locale_config.
@@ -178,8 +202,11 @@ type Config struct {
 	LocaleConfig     LocaleConfig      `json:"locale_config"`
 	NetworkConfig    map[string]string `json:"network_config"`
 	DiskConfig       DiskConfig        `json:"disk_config"`
-	Version          string            `json:"version"`
-	ConfigVersion    string            `json:"config_version"`
+	// EncryptionPassword is the top-level LUKS password (NOT in the creds file).
+	// omitempty keeps the unencrypted render byte-identical to before.
+	EncryptionPassword string `json:"encryption_password,omitempty"`
+	Version            string `json:"version"`
+	ConfigVersion      string `json:"config_version"`
 }
 
 // User mirrors a credentials-file user entry.
@@ -258,12 +285,12 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	pkgs := append(append([]string{}, bootstrapPackages...), cfg.PacstrapExtra...)
 	c := &Config{
 		Lang:             "English",
-		BootloaderConfig: BootloaderConfig{Bootloader: "Grub", UKI: false, Removable: false},
+		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false},
 		Kernels:          []string{"linux"},
 		Hostname:         cfg.System.Hostname,
 		Packages:         pkgs,
 		Timezone:         cfg.System.Timezone,
-		Ntp:              true,
+		Ntp:              cfg.System.NTP == nil || *cfg.System.NTP,
 		Swap:             useZram,
 		LocaleConfig: LocaleConfig{
 			KbLayout: cfg.System.Keymap, SysEnc: sysEnc, SysLang: sysLang,
@@ -278,11 +305,61 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 		ConfigVersion: Version,
 	}
 
+	// Optional LUKS encryption, nested under disk_config (the canonical location).
+	// The obj_ids are derived from the structures the builder already produced, so
+	// the layoutBuilder interface is unchanged.
+	if cfg.Disks.Encryption != nil {
+		enc, err := buildEncryption(cfg.Disks.Encryption.Type, devices, lvm)
+		if err != nil {
+			return nil, nil, err
+		}
+		c.DiskConfig.DiskEncryption = enc
+		c.EncryptionPassword = password
+	}
+
 	creds := &Creds{
 		Users:        []User{{Username: cfg.User.Name, Password: password, Sudo: true}},
 		RootPassword: password,
 	}
 	return c, creds, nil
+}
+
+// buildEncryption derives the DiskEncryption block from the already-built devices
+// and lvm config. For lvm_on_luks the encrypted partitions are exactly the VG's
+// LvmPvs; for luks it is the single partition mounted at "/". archinstall rejects
+// LVM encryption with more than two PV partitions (device_handler.py) — this is
+// guarded here as well as in config validation.
+//
+// VM-validation-pending: the encryption_type values, the partitions/lvm_volumes
+// obj_id wiring, and the 2-PV limit are reverse-engineered from archinstall source
+// and must be confirmed against a real archinstall run in a VM.
+func buildEncryption(encType string, devices []Device, lvm *LvmConfiguration) (*DiskEncryption, error) {
+	switch encType {
+	case "lvm_on_luks", "luks_on_lvm":
+		if lvm == nil || len(lvm.VolGroups) == 0 {
+			return nil, fmt.Errorf("%s encryption requires an lvm layout", encType)
+		}
+		pvs := lvm.VolGroups[0].LvmPvs
+		if len(pvs) > 2 {
+			return nil, fmt.Errorf("%s encryption supports at most 2 PVs (archinstall limit); got %d", encType, len(pvs))
+		}
+		return &DiskEncryption{EncryptionType: encType, Partitions: pvs, LvmVolumes: []string{}}, nil
+	case "luks":
+		var rootObjID string
+		for _, dev := range devices {
+			for _, p := range dev.Partitions {
+				if p.Mountpoint != nil && *p.Mountpoint == "/" {
+					rootObjID = p.ObjID
+				}
+			}
+		}
+		if rootObjID == "" {
+			return nil, fmt.Errorf("luks encryption: no partition mounted at / to encrypt")
+		}
+		return &DiskEncryption{EncryptionType: encType, Partitions: []string{rootObjID}, LvmVolumes: []string{}}, nil
+	default:
+		return nil, fmt.Errorf("unknown encryption type %q", encType)
+	}
 }
 
 // selectBuilder picks the layout strategy from cfg.Disks.Layout (empty -> lvm).
@@ -398,28 +475,86 @@ func (b *lvmBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
 		totalPVBytes += size
 	}
 
-	// Root LV: consume (almost) all of the VG. Shave headroom per PV so the
-	// concrete byte length stays under the VG's free extents.
+	// Available VG bytes for logical volumes: total PV bytes minus per-PV
+	// headroom (LVM metadata + alignment), so concrete lengths stay under the
+	// VG's free extents.
 	headroom := vgHeadroomPerPV * uint64(len(pvObjIDs))
 	if totalPVBytes <= headroom {
 		return nil, nil, fmt.Errorf("volume group too small for headroom")
 	}
-	lvBytes := roundDownMiB(totalPVBytes - headroom)
+	available := roundDownMiB(totalPVBytes - headroom)
 
-	root := "/"
+	volumes, err := b.volumes(available)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	lvm := &LvmConfiguration{
 		ConfigType: "default",
 		VolGroups: []LvmVolumeGroup{{
-			Name:   b.lvm.VG,
-			LvmPvs: pvObjIDs,
-			Volumes: []LvmVolume{{
-				ObjID: newObjID(), Status: "create", Name: b.lvm.LV,
-				FsType: b.lvm.Filesystem, Length: bytes(lvBytes),
-				Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
-			}},
+			Name:    b.lvm.VG,
+			LvmPvs:  pvObjIDs,
+			Volumes: volumes,
 		}},
 	}
 	return devices, lvm, nil
+}
+
+// volumes turns the configured LVM layout into the LvmVolume list, given the
+// bytes available in the VG (already net of per-PV headroom).
+//
+// Single-LV mode (Volumes empty): one root LV consuming all of `available`,
+// mounted at "/", using LV/Filesystem — byte-identical to the historical output.
+//
+// Multi-volume mode: one LvmVolume per configured volume. Fixed-size volumes are
+// parsed from Size; the single size-less volume receives the remainder
+// (available minus the sum of the fixed sizes). Volumes are emitted in declared
+// order.
+func (b *lvmBuilder) volumes(available uint64) ([]LvmVolume, error) {
+	root := "/"
+
+	if len(b.lvm.Volumes) == 0 {
+		return []LvmVolume{{
+			ObjID: newObjID(), Status: "create", Name: b.lvm.LV,
+			FsType: b.lvm.Filesystem, Length: bytes(available),
+			Mountpoint: &root, MountOptions: []string{}, Btrfs: []any{},
+		}}, nil
+	}
+
+	// Sum the fixed-size volumes so the remainder volume can take what's left.
+	var fixedTotal uint64
+	for _, v := range b.lvm.Volumes {
+		if v.Size == "" {
+			continue
+		}
+		n, err := parseSize(v.Size)
+		if err != nil {
+			return nil, fmt.Errorf("lvm volume %q size: %w", v.Name, err)
+		}
+		fixedTotal += roundDownMiB(n)
+	}
+	if fixedTotal >= available {
+		return nil, fmt.Errorf("lvm volumes (%d bytes fixed) exceed the available VG space (%d bytes)", fixedTotal, available)
+	}
+	restBytes := roundDownMiB(available - fixedTotal)
+
+	out := make([]LvmVolume, 0, len(b.lvm.Volumes))
+	for _, v := range b.lvm.Volumes {
+		var length uint64
+		if v.Size == "" {
+			length = restBytes
+		} else {
+			n, _ := parseSize(v.Size) // already validated above
+			length = roundDownMiB(n)
+		}
+		mp := v.Mountpoint
+		out = append(out, LvmVolume{
+			ObjID: newObjID(), Status: "create", Name: v.Name,
+			FsType: v.Filesystem, Length: bytes(length),
+			Mountpoint: &mp, MountOptions: []string{}, Btrfs: []any{},
+		})
+	}
+	return out, nil
 }
 
 // --- plain layout -----------------------------------------------------------

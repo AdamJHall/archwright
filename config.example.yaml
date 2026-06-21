@@ -16,6 +16,7 @@ system:
   locales:                       # additional locales to also enable in /etc/locale.gen
     - en_US.UTF-8
   keymap: us                     # console keymap; see: localectl list-keymaps
+  # ntp: true                    # enable NTP time sync (default true when omitted)
 
 user:
   name: adam
@@ -69,6 +70,14 @@ disks:
       - /dev/sda2            # remainder disk with the partition of the ESP device
       - /dev/sdb             # whole second disk
       - /dev/sdc             # whole second disk
+    # --- multiple logical volumes (optional) ---
+    # Instead of lv+filesystem above, carve several LVs in the VG — e.g. a
+    # fixed-size root plus a /home that takes the rest. Set either lv+filesystem
+    # OR volumes, not both. Exactly one volume omits `size` (it gets the rest of
+    # the VG) and exactly one is mounted at `/` (the root).
+    # volumes:
+    #   - { name: root, mountpoint: /,     filesystem: xfs,  size: 64GiB }
+    #   - { name: home, mountpoint: /home, filesystem: ext4 }   # rest of the VG
 
   # --- btrfs alternative (set layout: btrfs) ---
   # On btrfs, prefer swap.type zram or partition — a swapfile needs a dedicated
@@ -86,6 +95,16 @@ disks:
   # plain:
   #   device: /dev/nvme0n1     # single disk: ESP + one root partition, no LVM
   #   filesystem: ext4         # ext4 | xfs
+
+  # --- optional LUKS disk encryption ---
+  # Omit this block for no encryption (the default). The LUKS passphrase is the
+  # same install password archwright already collects — it is NOT stored here.
+  # encryption:
+  #   type: lvm_on_luks        # lvm_on_luks: encrypt the PV partitions, LVM on top
+  #                            #   (requires the lvm layout; archinstall limits this
+  #                            #   to at most 2 PVs)
+  #                            # luks: encrypt the single root partition
+  #                            #   (requires the plain or btrfs layout)
 
 # --- mirrors ----------------------------------------------------------------
 # Optional: run reflector in the live ISO before archinstall, so pacstrap (and
@@ -162,6 +181,14 @@ aur:                             # built via the AUR helper (see aur_helper)
 
 aur_helper: yay                  # yay (default) | paru — installed in Phase B, used for `aur`
 
+# --- bootloader -------------------------------------------------------------
+# Which bootloader Phase A installs (via archinstall) and Phase B configures.
+# Empty (or `grub`) keeps today's behaviour. `systemd-boot` is reverse-engineered
+# and VM-validation-pending (no grub.cfg; cmdline edits go to /etc/kernel/cmdline,
+# and `bootctl update` replaces grub-mkconfig).
+bootloader:
+  kind: grub                     # grub | systemd-boot
+
 # --- boot splash / theming --------------------------------------------------
 plymouth:
   theme: spinner                    # name passed to plymouth-set-default-theme
@@ -190,8 +217,26 @@ kde:
 chezmoi:
   repo: https://github.com/AdamJHall/dotfiles
 
+# The dotfiles stage (80) supports a selectable manager. When `dotfiles:` is
+# omitted entirely, the manager defaults to `chezmoi` and the repo falls back to
+# `chezmoi.repo` above — so the block below is optional and only needed to pick a
+# different manager or repo.
+#
+#   manager:
+#     chezmoi  (default) — chezmoi init --apply <repo>, or `chezmoi apply` when
+#                          ~/.local/share/chezmoi is already initialized.
+#     yadm               — yadm clone <repo>, or `yadm pull` when already cloned.
+#     bare-git           — classic bare repo at ~/.dotfiles with --work-tree=$HOME.
+#     none               — skip dotfiles entirely (clean no-op).
+#
+#   repo: defaults to chezmoi.repo when unset (backward compatible).
+#
+# dotfiles:
+#   manager: chezmoi
+#   repo: https://github.com/AdamJHall/dotfiles
+
 # --- post-dotfiles setup ----------------------------------------------------
-# Runs after chezmoi (stage 85). For things a dotfiles repo references but can't
+# Runs after the dotfiles stage (stage 85). For things a dotfiles repo references but can't
 # vendor: oh-my-zsh + its custom plugins, tmux's TPM, theme repos.
 #
 # `steps` is an ordered list — each entry is either a `clone` or a `command`, and

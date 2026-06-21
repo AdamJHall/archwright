@@ -89,8 +89,10 @@ func configureLocales(ctx *Context, locales []string) error {
 }
 
 // installKernels installs the configured kernels in the target, optionally
-// removes the stock `linux` kernel, sets the GRUB default, and regenerates the
-// GRUB config so the new entries (and default) take effect on first boot.
+// removes the stock `linux` kernel, and sets/applies the default kernel. The
+// package install and stock-kernel removal are bootloader-agnostic; only the
+// "make this kernel the default + regenerate boot config" tail differs per
+// bootloader, branched off the configured bootloader (defaulting to grub).
 func installKernels(ctx *Context, k config.KernelConfig) error {
 	args := append([]string{"-S", "--needed", "--noconfirm"}, k.Packages...)
 	if err := chrootCmd(ctx, "pacman", args...); err != nil {
@@ -102,6 +104,16 @@ func installKernels(ctx *Context, k config.KernelConfig) error {
 			return err
 		}
 	}
+	if ctx.Cfg.Bootloader.EffectiveKind() == "systemd-boot" {
+		return installKernelsSystemdBoot(ctx, k)
+	}
+	return installKernelsGrub(ctx, k)
+}
+
+// installKernelsGrub sets the GRUB default kernel (GRUB_TOP_LEVEL) and regenerates
+// grub.cfg so the new entries (and default) take effect on first boot. This is the
+// historical behaviour and stays byte-identical to before.
+func installKernelsGrub(ctx *Context, k config.KernelConfig) error {
 	if k.Default != "" {
 		// GRUB_TOP_LEVEL pins a specific kernel image as the default menu entry.
 		set := fmt.Sprintf(
@@ -114,6 +126,36 @@ func installKernels(ctx *Context, k config.KernelConfig) error {
 		}
 	}
 	return chrootCmd(ctx, "grub-mkconfig", "-o", "/boot/grub/grub.cfg")
+}
+
+// installKernelsSystemdBoot makes the requested kernel the systemd-boot default.
+// systemd-boot has no grub-mkconfig step: its entries are generated independently
+// (e.g. by the kernel-install hooks archinstall sets up), and the default entry is
+// selected by the `default` line in /boot/loader/loader.conf. We rewrite that line
+// to match the requested kernel's entry id pattern (linux-<pkg>*), which
+// kernel-install names per the installed kernel package. When no default kernel is
+// configured, archinstall's own loader.conf default is left untouched.
+//
+// VM-validation-pending: the exact loader entry id naming (linux-<pkg>.conf vs a
+// machine-id-prefixed name) is environment-dependent and MUST be verified against a
+// real archinstall systemd-boot run in a QEMU VM before trusting on hardware. The
+// glob (`linux-<pkg>*.conf`) is the defensible best-effort until then. We edit
+// loader.conf directly rather than `bootctl set-default` because bootctl in the
+// chroot may not see the ESP the way the booted system does.
+func installKernelsSystemdBoot(ctx *Context, k config.KernelConfig) error {
+	if k.Default == "" {
+		return nil
+	}
+	// Replace (or append) the `default` line in loader.conf, idempotently.
+	set := fmt.Sprintf(
+		`entry="$(basename "$(ls /boot/loader/entries/*%s*.conf 2>/dev/null | head -n1)" 2>/dev/null)"; `+
+			`[ -n "$entry" ] || entry="%s"; `+
+			`if grep -q '^default ' /boot/loader/loader.conf 2>/dev/null; then `+
+			`sed -i "s|^default .*|default ${entry}|" /boot/loader/loader.conf; `+
+			`else echo "default ${entry}" >> /boot/loader/loader.conf; fi`,
+		k.Default, k.Default,
+	)
+	return chrootShell(ctx, set)
 }
 
 // partDev returns the kernel partition device for a base device and number:

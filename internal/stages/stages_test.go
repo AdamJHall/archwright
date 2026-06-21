@@ -144,7 +144,7 @@ func TestRegistry(t *testing.T) {
 		[]string{"preflight", "archinstall"},
 		[]int{0, 10})
 	check(Bootstrap,
-		[]string{"yay", "packages", "flatpak", "aur", "plymouth", "grub-theme", "kde", "chezmoi", "setup"},
+		[]string{"yay", "packages", "flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup"},
 		[]int{10, 20, 30, 40, 50, 60, 70, 80, 85})
 }
 
@@ -225,7 +225,7 @@ func TestPlan_GrubTheme(t *testing.T) {
 
 func TestPlan_Chezmoi(t *testing.T) {
 	// init or apply depending on host state; both mention the repo or 'chezmoi'.
-	mustContain(t, planFor(t, Bootstrap, "chezmoi"), "chezmoi")
+	mustContain(t, planFor(t, Bootstrap, "dotfiles"), "chezmoi")
 }
 
 func TestPlan_Setup(t *testing.T) {
