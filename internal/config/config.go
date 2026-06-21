@@ -148,7 +148,7 @@ type Hook struct {
 	At     string            `yaml:"at"     validate:"required,hookpoint"`
 	Run    string            `yaml:"run"    validate:"required_without=Script"`
 	Script string            `yaml:"script" validate:"omitempty,file"`
-	Root   bool              `yaml:"root"`   // run privileged (Root) vs unprivileged (Cmd/Shell)
+	Root   bool              `yaml:"root"` // run privileged (Root) vs unprivileged (Cmd/Shell)
 	Env    map[string]string `yaml:"env"`
 	Dir    string            `yaml:"dir"`
 }
