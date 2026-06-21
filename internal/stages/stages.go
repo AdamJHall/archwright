@@ -4,6 +4,7 @@
 package stages
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -82,6 +83,50 @@ func Select(p Phase, only string, skip, disable []string) []Stage {
 		out = append(out, s)
 	}
 	return out
+}
+
+// Within narrows an already-selected, order-sorted slice of stages to the
+// inclusive window [from, to] — the --from / --to resume flags. Each bound is
+// resolved by stage name OR order-number, exactly like --only, but matched
+// against the stages actually present in selected (so it composes cleanly with
+// --skip / disable, which run first via Select). An empty bound means open on
+// that end. It returns an error if a bound names a stage not in selected, or if
+// the bounds are inverted (from after to).
+func Within(selected []Stage, from, to string) ([]Stage, error) {
+	if len(selected) == 0 {
+		return selected, nil
+	}
+	lo := 0
+	if from != "" {
+		i := indexOf(selected, from)
+		if i < 0 {
+			return nil, fmt.Errorf("--from: no stage %q in the selected set", from)
+		}
+		lo = i
+	}
+	hi := len(selected) - 1
+	if to != "" {
+		i := indexOf(selected, to)
+		if i < 0 {
+			return nil, fmt.Errorf("--to: no stage %q in the selected set", to)
+		}
+		hi = i
+	}
+	if lo > hi {
+		return nil, fmt.Errorf("--from %q comes after --to %q", from, to)
+	}
+	return selected[lo : hi+1], nil
+}
+
+// indexOf returns the position of the stage matching ref (by name or order
+// number) within ss, or -1 if none matches.
+func indexOf(ss []Stage, ref string) int {
+	for i, s := range ss {
+		if ref == s.Name() || ref == strconv.Itoa(s.Order()) {
+			return i
+		}
+	}
+	return -1
 }
 
 // All returns every registered stage across all phases, sorted by phase then order.

@@ -34,6 +34,8 @@ var (
 	flagDryRun bool
 	flagOnly   string
 	flagSkip   []string
+	flagFrom   string
+	flagTo     string
 	flagConfig string
 	flagYes    bool
 	flagPlain  bool
@@ -51,6 +53,8 @@ func main() {
 	pf.BoolVar(&flagDryRun, "dry-run", false, "print commands instead of running them")
 	pf.StringVar(&flagOnly, "only", "", "run a single stage by name or number")
 	pf.StringArrayVar(&flagSkip, "skip", nil, "skip a stage by name or number (repeatable)")
+	pf.StringVar(&flagFrom, "from", "", "resume from a stage by name or number (inclusive)")
+	pf.StringVar(&flagTo, "to", "", "stop after a stage by name or number (inclusive)")
 	pf.StringVar(&flagConfig, "config", "config.yaml", "path to config.yaml")
 	pf.BoolVar(&flagPlain, "plain", false, "force plain streaming output instead of the scrollable TUI")
 
@@ -126,6 +130,9 @@ func runPhase(p stages.Phase) error {
 	}
 
 	selected := stages.Select(p, flagOnly, flagSkip, cfg.Stages.Disable)
+	if selected, err = stages.Within(selected, flagFrom, flagTo); err != nil {
+		return err
+	}
 	if len(selected) == 0 {
 		return fmt.Errorf("no stages matched (--only %q, --skip %v, stages.disable %v)", flagOnly, flagSkip, cfg.Stages.Disable)
 	}
