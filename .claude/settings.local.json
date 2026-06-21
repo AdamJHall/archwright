@@ -19,7 +19,17 @@
       "Bash(go test *)",
       "Bash(/tmp/archwright --version)",
       "Bash(cd *)",
-      "Bash(gofmt -l .)"
+      "Bash(gofmt -l .)",
+      "Bash(gh auth *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git restore *)",
+      "Bash(git commit -q -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('disk_config',{}\\), indent=1\\)\\); print\\('BOOTLOADER:', json.dumps\\(d.get\\('bootloader_config'\\) or d.get\\('bootloader'\\)\\)\\); print\\('ENC TOP:', 'disk_encryption' in d\\)\")",
+      "Bash(bash -n test/vm.sh)"
     ]
   }
 }

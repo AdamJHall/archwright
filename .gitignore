@@ -1,6 +1,13 @@
 # Your real machine config — keep it out of git.
 /config.yaml
 
+# Built binary + local QEMU smoke-test scratch (disks, NVRAM).
+/archwright
+/.vm/
+
+# Local upstream archinstall checkout, kept only as a schema reference.
+/archinstall/
+
 # Editor / OS noise
 *.swp
 *~
