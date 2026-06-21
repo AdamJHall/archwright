@@ -174,16 +174,16 @@ kernel:
   replace_stock: true            # remove the stock `linux` kernel after install
                                  # (redundant if you set base to your kernel directly)
 
-flatpaks:                        # installed from Flathub
-  - com.spotify.Client
-  - org.mozilla.firefox
-  - com.stremio.Stremio
+# The COMPLETE set of flatpak remotes — nothing is added implicitly, so list
+# every remote your apps install from (including Flathub).
+flatpak_remotes:
+  - { name: flathub, url: https://flathub.org/repo/flathub.flatpakrepo }
+  # - { name: flathub-beta, url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo }
 
-# Extra flatpak remotes registered before installing (the built-in Flathub remote
-# is always added, so the apps above keep working). Add others you install from
-# via hooks or your dotfiles.
-# flatpak_remotes:
-#   - { name: flathub-beta, url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo }
+flatpaks:                        # each app names its remote: "remote:appid"
+  - flathub:com.spotify.Client   # (remote must be declared in flatpak_remotes above)
+  - flathub:org.mozilla.firefox
+  - flathub:com.stremio.Stremio
 
 aur:                             # built via the AUR helper (see aur_helper)
   - 1password

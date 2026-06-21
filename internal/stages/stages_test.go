@@ -56,7 +56,9 @@ kernel:
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true
-flatpaks: [com.spotify.Client]
+flatpak_remotes:
+  - { name: flathub, url: https://flathub.org/repo/flathub.flatpakrepo }
+flatpaks: [flathub:com.spotify.Client]
 aur: [1password, 1password-cli]
 plymouth:
   theme: bgrt
@@ -206,7 +208,7 @@ func TestPlan_AUR(t *testing.T) {
 
 func TestPlan_Flatpak(t *testing.T) {
 	mustContain(t, planFor(t, Bootstrap, "flatpak"),
-		"flatpak remote-add --if-not-exists flathub",
+		"flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
 		"flatpak install -y --noninteractive flathub com.spotify.Client",
 	)
 }
