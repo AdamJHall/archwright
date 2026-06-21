@@ -143,11 +143,14 @@ type Clone struct {
 
 // Hook is a user-defined command run at a named lifecycle point. Exactly one of
 // Run (an inline shell snippet) or Script (a path to a script file) is set.
+// Script and Dir have a leading `~` expanded to the user's home at run time.
+// Script existence is NOT checked at validate time: a hook script may be
+// produced by an earlier hook or stage in the same run.
 type Hook struct {
 	Name   string            `yaml:"name"`
 	At     string            `yaml:"at"     validate:"required,hookpoint"`
 	Run    string            `yaml:"run"    validate:"required_without=Script"`
-	Script string            `yaml:"script" validate:"omitempty,file"`
+	Script string            `yaml:"script" validate:"omitempty"`
 	Root   bool              `yaml:"root"` // run privileged (Root) vs unprivileged (Cmd/Shell)
 	Env    map[string]string `yaml:"env"`
 	Dir    string            `yaml:"dir"`
@@ -207,37 +210,68 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading config: %w", err)
 	}
-	expanded, err := expandEnv(data)
-	if err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+	if err := expandEnv(&root); err != nil {
 		return nil, err
 	}
 	var c Config
-	if err := yaml.Unmarshal(expanded, &c); err != nil {
+	if err := root.Decode(&c); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
 	}
 	return &c, nil
 }
 
-// expandEnv substitutes ${VAR}/$VAR references in the raw config with the
-// process environment, so secrets and per-machine values can stay out of the
-// (gitignored) file. An unset variable is an error rather than a silent blank.
-// Write "$$" for a literal "$" (e.g. inside a shell snippet meant for runtime).
-func expandEnv(data []byte) ([]byte, error) {
+// expandEnv substitutes ${VAR}/$VAR references in the config's scalar VALUES
+// with the process environment, so secrets and per-machine values can stay out
+// of the (gitignored) file. It walks the parsed YAML node tree and expands only
+// value scalars — mapping keys and comments are left untouched, so a literal "$"
+// in a comment or key is harmless. An unset variable is an error rather than a
+// silent blank. Write "$$" for a literal "$" (e.g. inside a shell snippet meant
+// for runtime). Returns a joined error naming every missing variable.
+func expandEnv(n *yaml.Node) error {
 	var missing []string
-	out := os.Expand(string(data), func(name string) string {
-		if name == "$" { // os.Expand maps the "$" in "$$" through here
-			return "$"
-		}
-		if v, ok := os.LookupEnv(name); ok {
-			return v
-		}
-		missing = append(missing, name)
-		return ""
+	walkValues(n, func(v *yaml.Node) {
+		v.Value = os.Expand(v.Value, func(name string) string {
+			if name == "$" { // os.Expand maps the "$" in "$$" through here
+				return "$"
+			}
+			if val, ok := os.LookupEnv(name); ok {
+				return val
+			}
+			missing = append(missing, name)
+			return ""
+		})
 	})
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
+		return fmt.Errorf("undefined environment variable(s) in config: %s (use $$ for a literal $)", strings.Join(missing, ", "))
 	}
-	return []byte(out), nil
+	return nil
+}
+
+// walkValues invokes fn on every scalar VALUE node reachable from n, skipping
+// mapping key nodes (so keys are never substituted). Document, sequence and
+// alias nodes are traversed transparently; anchors carry their (already-walked)
+// value through aliases, so an alias is left untouched to avoid double-expansion.
+func walkValues(n *yaml.Node, fn func(*yaml.Node)) {
+	if n == nil {
+		return
+	}
+	switch n.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, c := range n.Content {
+			walkValues(c, fn)
+		}
+	case yaml.MappingNode:
+		// Content is [key0, val0, key1, val1, ...]; recurse into values only.
+		for i := 1; i < len(n.Content); i += 2 {
+			walkValues(n.Content[i], fn)
+		}
+	case yaml.ScalarNode:
+		fn(n)
+	}
 }
 
 // Validate runs the struct-tag schema and returns every failure joined together,

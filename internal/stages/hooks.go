@@ -67,7 +67,7 @@ func fireOne(ctx *Context, h config.Hook) error {
 		ctx.R.Env = merged
 	}
 	if h.Dir != "" {
-		ctx.R.Dir = h.Dir
+		ctx.R.Dir = expandHome(h.Dir)
 	}
 
 	switch {
@@ -77,10 +77,11 @@ func fireOne(ctx *Context, h config.Hook) error {
 		}
 		return ctx.R.Shell(h.Run)
 	case h.Script != "":
+		script := expandHome(h.Script)
 		if h.Root {
-			return ctx.R.Root("bash", h.Script)
+			return ctx.R.Root("bash", script)
 		}
-		return ctx.R.Cmd("bash", h.Script)
+		return ctx.R.Cmd("bash", script)
 	}
 	return nil
 }
