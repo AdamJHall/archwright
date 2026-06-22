@@ -146,7 +146,7 @@ disks:
 }
 
 // TestBuild_LVMSingleVolumeUnchanged proves an empty-Volumes config still emits
-// exactly one root LV (the historical single-LV path).
+// exactly one root LV (the single-LV path).
 func TestBuild_LVMSingleVolumeUnchanged(t *testing.T) {
 	yamlSrc := `
 system:

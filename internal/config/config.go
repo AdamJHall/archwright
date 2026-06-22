@@ -97,12 +97,8 @@ type Config struct {
 		Environment string `yaml:"environment" validate:"omitempty,oneof=kde gnome hyprland sway none"`
 	} `yaml:"desktop"`
 
-	Chezmoi struct {
-		Repo string `yaml:"repo" validate:"omitempty,url"`
-	} `yaml:"chezmoi"`
-
 	// Dotfiles selects how dotfiles are applied in Phase B. Manager defaults to
-	// "chezmoi"; Repo defaults to chezmoi.repo when unset (backward compatible).
+	// "chezmoi". Repo is required for any manager other than "none".
 	Dotfiles struct {
 		Manager string `yaml:"manager" validate:"omitempty,oneof=chezmoi yadm bare-git none"`
 		Repo    string `yaml:"repo"    validate:"omitempty,url"`
@@ -121,12 +117,6 @@ type Config struct {
 	// Empty defaults to "grub" (today's behavior). systemd-boot is reverse-engineered
 	// and VM-validation-pending (see CLAUDE.md archinstall-drift rule).
 	Bootloader BootloaderConfig `yaml:"bootloader"`
-
-	// PacstrapExtraDeprecated captures the removed `pacstrap_extra` key so
-	// semanticErrors can emit a clear rename-to-`pacstrap` migration error for one
-	// release, rather than silently ignoring a config that used the old key. It is
-	// not part of the schema and has no validate rules.
-	PacstrapExtraDeprecated []string `yaml:"pacstrap_extra"`
 }
 
 // DisksConfig describes the disk layout archinstall should create. Layout is a
@@ -187,11 +177,10 @@ func (s SwapConfig) EffectiveType() string {
 	return s.Type
 }
 
-// LVMLayout is the classic ESP + LVM-on-partitions root (the historical default).
+// LVMLayout is the ESP + LVM-on-partitions root layout (the default).
 //
 // Two mutually-exclusive shapes (enforced in lvmVolumeErrors):
-//   - single root LV: set LV + Filesystem, leave Volumes empty (the historical
-//     shape; behaviour and rendered output are byte-identical).
+//   - single root LV: set LV + Filesystem, leave Volumes empty.
 //   - multiple volumes: set Volumes (e.g. a fixed root + a /home that takes the
 //     remainder), leave LV/Filesystem empty.
 type LVMLayout struct {
@@ -246,8 +235,8 @@ type Encryption struct {
 	Type string `yaml:"type" validate:"required,oneof=luks lvm_on_luks"`
 }
 
-// SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
-// applied the dotfiles. It covers the things a dotfiles repo references but can't
+// SetupConfig drives the Phase B 85-setup stage, which runs after the dotfiles
+// stage has applied the dotfiles. It covers the things a dotfiles repo references but can't
 // vendor itself — oh-my-zsh and its custom plugins, tmux's TPM, theme repos.
 //
 // Steps run strictly in the order written, so a clone that lands inside another
@@ -472,9 +461,6 @@ func (c *Config) Validate() error {
 // semanticErrors covers cross-field rules that struct tags can't express.
 func (c *Config) semanticErrors() []error {
 	var errs []error
-	if len(c.PacstrapExtraDeprecated) > 0 {
-		errs = append(errs, fmt.Errorf("pacstrap_extra has been removed: rename it to `pacstrap` and add the base set (base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode) — see config.example.yaml"))
-	}
 	k := c.Kernel
 	if k.ReplaceStock && len(k.Packages) == 0 {
 		errs = append(errs, fmt.Errorf("kernel.replace_stock requires at least one kernel.packages entry (otherwise the system would have no kernel)"))
