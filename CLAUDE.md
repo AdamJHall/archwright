@@ -31,8 +31,10 @@ plan. There is no separate lint config beyond `go vet`.
 ## Architecture
 
 ```
-main.go                 cobra CLI: install / bootstrap / validate + persistent flags
+main.go                 cobra CLI: install / bootstrap / validate / render + flags
 internal/config/        Config struct; Validate() via go-playground/validator struct tags
+internal/configsrc/     resolve remote/layered config: --config refs (local/github/url),
+                        imports: recursion, ${VAR} expand, deep-merge -> flattened config
 internal/archinstall/   render config.yaml -> archinstall config + creds JSON (Phase A core)
 internal/run/           Runner: Cmd/Shell/Chroot/Root/Try, dry-run, recorded .Plan
 internal/ui/            stderr-bound lipgloss renderer (TTY/NO_COLOR aware) + log +
@@ -80,3 +82,10 @@ Add fields with their tags, then a table case in `config_test.go`.
   without executing — always exercise `--dry-run` first.
 - **Don't reintroduce a `yq` shell-out.** Arch's `extra/yq` is the Python jq-wrapper, not
   mikefarah Go yq. The code parses YAML directly with `gopkg.in/yaml.v3`; keep it that way.
+- **Resolve remote/layered config once, in Phase A.** `internal/configsrc` fetches +
+  deep-merges `imports:`/multiple `--config` refs into one *flattened* config (no `imports:`
+  key). Phase A stages those flattened bytes (`Context.FlatConfig`) into the target, so Phase
+  B reads a single concrete local file — **never re-fetch or re-merge in Phase B.** Merge
+  rules: maps recurse, string lists union+dedup, name-keyed structured lists merge by `name`,
+  `!replace` forces wholesale replace. `configsrc.Load` returns the merged config *and* the
+  flattened bytes; `render` writes them out without running stages.

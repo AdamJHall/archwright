@@ -27,6 +27,11 @@ type Context struct {
 	R          *run.Runner
 	AssumeYes  bool
 	ConfigPath string
+	// FlatConfig is the resolved+merged config (flattened, no imports:) staged
+	// into the target for Phase B by stageBinary. When non-nil it is written
+	// verbatim so Phase B sees byte-identical config without re-fetching; when
+	// nil, stageBinary falls back to copying ConfigPath (back-compat).
+	FlatConfig []byte
 }
 
 // Stage is one ordered unit of work. Order is the numeric prefix (10, 20, ...)

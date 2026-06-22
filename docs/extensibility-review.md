@@ -425,8 +425,18 @@ apps/password prompts, heavy for a single-machine tool). We reverted to plain st
 original deliberate design (the "no bubbletea spinner" gotcha) was right. See the Wave 4
 retrospective below.
 
-**Next wave starts here:** the still-deferred **remote/layered-config** item (big, documented
-in its own section below; explicitly deferred until >1 machine is actually managed).
+**Wave 5 landed** the **remote/layered-config** item (the last big one): a new
+`internal/configsrc` package that resolves `--config` refs (local path / github shorthand /
+raw URL), recursively resolves a top-level `imports:` key, env-expands per layer, and
+deep-merges (base-first, importer/later-wins; string lists union+dedup, name-keyed structured
+lists merge by `name`, `!replace` escape hatch) into one flattened config. `--config` is now
+repeatable; a new `render` command writes the flattened merge; Phase A resolves once and
+stages the flattened bytes (`Context.FlatConfig`) so Phase B never re-fetches. See the Wave 5
+retrospective below.
+
+**Next wave starts here:** the headline extensibility roadmap is now fully landed — what
+remains is the **e2e/VM validation** work ([[e2e-testing-plan]]) and the optional polish noted
+in the retrospectives (trust/pinning UX warnings, `render` provenance comment).
 Everything new since Wave 1 carries **VM-validation caveats** — confirm the
 reverse-engineered shapes against a real archinstall 4.3 run before trusting on hardware:
 the Wave 2 `bootloader_config`/btrfs-subvolume JSON, and the Wave 3 `disk_encryption`
@@ -641,9 +651,68 @@ to watch:
   `.claude/worktrees/` checkouts as embedded repos — added a `.gitignore` entry; future
   waves should gitignore the worktree dir up front.
 
-Deferred after Wave 4: **remote/layered configuration** (the one remaining big item, below).
+Deferred after Wave 4: **remote/layered configuration** — landed in Wave 5 (below).
 All Wave 2–4 reverse-engineered shapes still need a real archinstall 4.3 QEMU run before
 hardware — now including the snapper timer/`set-config` names.
+
+---
+
+## Wave 5 retrospective — notes for the next agent
+
+Wave 5 (remote & layered configuration — the last big roadmap item) was built by **two
+parallel worktree agents in Round 1** (the cohesive `internal/configsrc` package; the docs)
+plus **one Round-2 agent** (CLI/flatten wiring) layered on top once the package API was real.
+Each agent worked TDD with the `golang-patterns`/`golang-testing` skills.
+
+### What landed
+- **`internal/configsrc`** (`merge.go` / `resolve.go` / `source.go` + tests): `Merge(base,
+  over map[string]any)` (maps recurse; string slices union+dedup; structured slices key-merge
+  by `name`, else replace; `!replace`-tagged nodes replace wholesale via a parse-time marker)
+  and `Load(refs []string, opts Options) (*config.Config, []byte, error)` — three ref forms
+  (local / `github.com/O/R/p.yaml[@ref]` → raw.githubusercontent / raw URL), depth-first
+  `imports:` recursion (stripped before decode; importer/later wins), relative imports
+  resolved against the importing file's location, per-layer `${VAR}` expansion, cycle
+  detection + depth cap (32), URL+ref cache under `$XDG_CACHE_HOME/archwright` with
+  `Offline`, `Strict` unpinned-ref rejection, and `Token` bearer auth. Returns the merged
+  `*config.Config` **and** the flattened YAML bytes.
+- **CLI:** `--config` is now a repeatable `StringArrayVar` (defaulted via a testable
+  `configRefs` helper to dodge cobra's append-onto-default pitfall); new `--offline`/`--strict`
+  flags + `GITHUB_TOKEN` env; `validate`/`runPhase` both route through `configsrc.Load`; new
+  `render --config <ref>... [-o out.yaml]` (resolve+merge+validate, write flattened, no stages).
+- **Flatten-once:** `Context.FlatConfig []byte`; `stageBinary` writes the flattened bytes into
+  the target when present (falls back to `cp ConfigPath` when nil), so Phase B reads one
+  concrete file with no re-fetch.
+
+### Process notes (reuse / watch)
+- **A genuine dependency chain doesn't parallelize like additive features do.** Unlike Waves
+  1–4 (independent struct fields auto-merging), this feature is layered: merge ← resolve ←
+  CLI. Forcing all three into one parallel round would have meant stub-and-reconcile churn.
+  Splitting into **Round 1 (cohesive package + independent docs, parallel) → Round 2 (CLI
+  wiring off the integrated branch)** kept every agent compiling and testing against real code.
+  Lesson: partition *additive* work in parallel; **sequence layered work into rounds**, fanning
+  out only within a round.
+- **One agreed API contract up front made Round 2 frictionless.** The orchestrator specified
+  the exact `Load`/`Merge`/`Options` signatures in both prompts; Round 2 coded against them
+  with zero interface drift.
+- **Worktree base gotcha (again).** The harness branches each worktree agent off the main
+  repo's HEAD; even with the orchestrator checked out on the wave branch, the Round-2 agent's
+  worktree started at `main` (no `configsrc`) and the agent had to `git reset` onto
+  `feat/extensibility-wave5` itself. Next time, hand the agent the explicit base branch in the
+  prompt so it doesn't have to discover the miss.
+- **One additive cross-package export, cleanly scoped.** configsrc needed byte-identical env
+  semantics, so Agent A added exactly one line to `config.go`: `ExpandEnvNode` wrapping the
+  unchanged `expandEnv`. Naming the single allowed outside-edit in the prompt kept ownership
+  clean.
+
+### Follow-ups for the next agent (small)
+- **Trust UX is minimal by design.** `Strict` errors on unpinned github refs; the
+  non-strict "warn on unpinned `main`" and the "print resolved source list before the
+  `ConfirmErase` prompt" niceties from the design were *not* wired (configsrc stays UI-free).
+  Wire them in `main`/`ui` if desired.
+- **No provenance comment yet.** `render` writes the flattened YAML without the resolved-SHA
+  provenance header the design suggested.
+- **VM/e2e still owes config-acceptance.** The flatten-once path and merge output should be
+  exercised in the e2e run ([[e2e-testing-plan]]) feeding a real archinstall.
 
 ---
 
@@ -940,7 +1009,7 @@ Notes:
 
 ### Priority / cost
 
-**Defer** (this is explicitly a "for later" item). It's MEDIUM value (great quality-of-life
+**✅ Landed in Wave 5.** (Originally deferred.) It was MEDIUM value (great quality-of-life
 for a multi-machine dotfiles-driven setup), MEDIUM-HIGH cost — the generic deep-merge with a
 sane per-field list strategy is the bulk of the work, and the trust/pinning story must land
 with it, not after. Sequence it **after** the framework foundations (env-var substitution

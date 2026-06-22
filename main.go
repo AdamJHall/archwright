@@ -1,8 +1,9 @@
 // Command archwright is the single-binary, declarative Arch Linux installer.
 //
-//	archwright install     [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>] [--yes]
-//	archwright bootstrap   [--dry-run] [--only <stage>] [--skip <stage>] [--config <file>]
-//	archwright validate    [--config <file>]
+//	archwright install     [--dry-run] [--only <stage>] [--skip <stage>] [--config <ref>...] [--yes]
+//	archwright bootstrap   [--dry-run] [--only <stage>] [--skip <stage>] [--config <ref>...]
+//	archwright validate    [--config <ref>...]
+//	archwright render      [--config <ref>...] [-o out.yaml]
 //	archwright list-stages
 //
 // Phase A (install) runs from the Arch live ISO as root; Phase B (bootstrap)
@@ -10,14 +11,20 @@
 // Stage selection: --only (single stage) wins; otherwise --skip and the
 // stages.disable config list subtract from the full set. User-defined hooks fire
 // at lifecycle points (pre/post-{install,bootstrap}, before:/after:<stage>).
+//
+// --config is repeatable: each ref is a local path, github shorthand or raw URL,
+// resolved + deep-merged (later wins) via internal/configsrc, which also resolves
+// in-file imports:. render resolves + merges + validates and writes the flattened
+// YAML without running any stages or touching disks.
 package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
-	"github.com/AdamJHall/archwright/internal/config"
+	"github.com/AdamJHall/archwright/internal/configsrc"
 	"github.com/AdamJHall/archwright/internal/run"
 	"github.com/AdamJHall/archwright/internal/stages"
 	"github.com/AdamJHall/archwright/internal/ui"
@@ -35,10 +42,39 @@ var (
 	flagSkip    []string
 	flagFrom    string
 	flagTo      string
-	flagConfig  string
+	flagConfig  []string
+	flagOffline bool
+	flagStrict  bool
 	flagYes     bool
 	flagNoColor bool
+	flagOutput  string // local to render
 )
+
+// defaultConfigRef is the ref used when --config is not supplied.
+const defaultConfigRef = "config.yaml"
+
+// configRefs returns the config refs to load. cobra's StringArrayVar appends
+// user values to any non-empty default, so we bind --config with an empty
+// default and apply defaultConfigRef here when the user passed none. This keeps
+// "no flag" -> [config.yaml] while "--config a --config b" -> [a b] (no leaked
+// default). Extracted so the default/repeat logic is unit-testable.
+func configRefs(flag []string) []string {
+	if len(flag) == 0 {
+		return []string{defaultConfigRef}
+	}
+	return flag
+}
+
+// loadOpts builds configsrc.Options from the persistent flags + GITHUB_TOKEN env
+// (the token is deliberately env-only, never a flag). CacheDir/HTTPClient are
+// left zero so configsrc applies its own defaults.
+func loadOpts() configsrc.Options {
+	return configsrc.Options{
+		Offline: flagOffline,
+		Strict:  flagStrict,
+		Token:   os.Getenv("GITHUB_TOKEN"),
+	}
+}
 
 func main() {
 	root := &cobra.Command{
@@ -54,7 +90,11 @@ func main() {
 	pf.StringArrayVar(&flagSkip, "skip", nil, "skip a stage by name or number (repeatable)")
 	pf.StringVar(&flagFrom, "from", "", "resume from a stage by name or number (inclusive)")
 	pf.StringVar(&flagTo, "to", "", "stop after a stage by name or number (inclusive)")
-	pf.StringVar(&flagConfig, "config", "config.yaml", "path to config.yaml")
+	// Bound with an empty default on purpose: see configRefs. A non-empty
+	// StringArrayVar default would be *appended to* by user values.
+	pf.StringArrayVar(&flagConfig, "config", nil, "config ref: local path, github shorthand or URL (repeatable; default config.yaml)")
+	pf.BoolVar(&flagOffline, "offline", false, "resolve config from cache only; never hit the network")
+	pf.BoolVar(&flagStrict, "strict", false, "refuse unpinned github config refs (require @ref)")
 	pf.BoolVar(&flagNoColor, "no-color", false, "disable coloured output (NO_COLOR is also honoured)")
 
 	// Apply colour preference once flags are parsed, before any output.
@@ -81,7 +121,8 @@ func main() {
 		Use:   "validate",
 		Short: "Parse and validate config.yaml without changing anything",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			cfg, err := config.Load(flagConfig)
+			refs := configRefs(flagConfig)
+			cfg, _, err := configsrc.Load(refs, loadOpts())
 			if err != nil {
 				return err
 			}
@@ -91,10 +132,28 @@ func main() {
 			if err := stages.ValidateHooks(cfg); err != nil {
 				return err
 			}
-			ui.OK("config valid: %s", flagConfig)
+			ui.OK("config valid: %v", refs)
 			return nil
 		},
 	}
+
+	renderCmd := &cobra.Command{
+		Use:   "render",
+		Short: "Resolve + merge --config refs, validate, and write the flattened YAML (no stages, no disks)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			out := os.Stdout
+			if flagOutput != "" && flagOutput != "-" {
+				f, err := os.Create(flagOutput)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				return renderConfig(configRefs(flagConfig), f, loadOpts())
+			}
+			return renderConfig(configRefs(flagConfig), out, loadOpts())
+		},
+	}
+	renderCmd.Flags().StringVarP(&flagOutput, "output", "o", "", "write flattened config here (default stdout; - is stdout)")
 
 	listStagesCmd := &cobra.Command{
 		Use:   "list-stages",
@@ -111,7 +170,7 @@ func main() {
 		},
 	}
 
-	root.AddCommand(installCmd, bootstrapCmd, validateCmd, listStagesCmd)
+	root.AddCommand(installCmd, bootstrapCmd, validateCmd, renderCmd, listStagesCmd)
 
 	if err := root.Execute(); err != nil {
 		ui.Error(err.Error())
@@ -119,8 +178,28 @@ func main() {
 	}
 }
 
+// renderConfig resolves + merges refs, validates the result, then writes the
+// flattened YAML to out. It runs no stages and touches no disks. Validation
+// happens before any bytes are written so an invalid merged config errors out
+// rather than emitting a bad file. Factored out so it is testable without cobra.
+func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
+	cfg, flat, err := configsrc.Load(refs, opts)
+	if err != nil {
+		return err
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := stages.ValidateHooks(cfg); err != nil {
+		return err
+	}
+	_, err = out.Write(flat)
+	return err
+}
+
 func runPhase(p stages.Phase) error {
-	cfg, err := config.Load(flagConfig)
+	refs := configRefs(flagConfig)
+	cfg, flat, err := configsrc.Load(refs, loadOpts())
 	if err != nil {
 		return err
 	}
@@ -128,7 +207,8 @@ func runPhase(p stages.Phase) error {
 		Cfg:        cfg,
 		R:          &run.Runner{DryRun: flagDryRun, Sudo: p == stages.Bootstrap},
 		AssumeYes:  flagYes,
-		ConfigPath: flagConfig,
+		ConfigPath: refs[0],
+		FlatConfig: flat,
 	}
 
 	if err := stages.ValidateHooks(cfg); err != nil {
