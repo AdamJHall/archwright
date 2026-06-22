@@ -57,47 +57,48 @@ func (o Options) client() *http.Client {
 // expands ${VAR}, deep-merges everything (base-first, later/importer wins), then
 // decodes and returns the resulting *config.Config together with the flattened
 // YAML bytes (no `imports:` key) suitable for staging into Phase B.
-func Load(refs []string, opts Options) (*config.Config, []byte, error) {
+func Load(refs []string, opts Options) (*config.Config, []byte, []Source, error) {
 	if len(refs) == 0 {
-		return nil, nil, fmt.Errorf("no config refs given")
+		return nil, nil, nil, fmt.Errorf("no config refs given")
 	}
 
+	srcs := newSourceSet()
 	merged := map[string]any{}
 	for _, raw := range refs {
 		r, err := parseRef(raw, opts.Strict)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		// Each top-level ref is its own resolution graph; later top-level refs
 		// (later --config) win, mirroring importer-wins precedence.
 		visited := map[string]bool{}
-		layer, err := resolve(r, opts, visited, 0)
+		layer, err := resolve(r, opts, visited, 0, srcs)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		merged, err = Merge(merged, layer)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	flat, err := yaml.Marshal(merged)
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshaling merged config: %w", err)
+		return nil, nil, nil, fmt.Errorf("marshaling merged config: %w", err)
 	}
 
 	var cfg config.Config
 	if err := yaml.Unmarshal(flat, &cfg); err != nil {
-		return nil, nil, fmt.Errorf("decoding merged config: %w", err)
+		return nil, nil, nil, fmt.Errorf("decoding merged config: %w", err)
 	}
-	return &cfg, flat, nil
+	return &cfg, flat, srcs.list, nil
 }
 
 // resolve fetches r, expands env, recursively resolves its imports (depth-first,
 // base-first), and returns the merged map for this subtree with `imports:`
 // stripped. visited holds the canonical refs on the current path for cycle
 // detection.
-func resolve(r ref, opts Options, visited map[string]bool, depth int) (map[string]any, error) {
+func resolve(r ref, opts Options, visited map[string]bool, depth int, srcs *sourceSet) (map[string]any, error) {
 	if depth > maxDepth {
 		return nil, fmt.Errorf("import depth exceeded %d at %s", maxDepth, r.raw)
 	}
@@ -152,7 +153,7 @@ func resolve(r ref, opts Options, visited map[string]bool, depth int) (map[strin
 	// Base-first: merge each import (in order, later wins) then this file last.
 	acc := map[string]any{}
 	for _, ir := range importRefs {
-		layer, err := resolve(ir, opts, visited, depth+1)
+		layer, err := resolve(ir, opts, visited, depth+1, srcs)
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +162,8 @@ func resolve(r ref, opts Options, visited map[string]bool, depth int) (map[strin
 			return nil, err
 		}
 	}
+	// Record this layer after its imports (base-first); de-dup keeps first.
+	srcs.add(r)
 	acc, err = Merge(acc, ownMap)
 	if err != nil {
 		return nil, err

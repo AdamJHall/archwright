@@ -65,6 +65,31 @@ func configRefs(flag []string) []string {
 	return flag
 }
 
+// remoteSources returns the sources fetched over the network (github/url),
+// preserving order. Extracted so runPhase's "print provenance only when remote"
+// decision is unit-testable apart from the printing.
+func remoteSources(srcs []configsrc.Source) []configsrc.Source {
+	var out []configsrc.Source
+	for _, s := range srcs {
+		if s.Kind == "github" || s.Kind == "url" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// unpinnedSources returns the github sources resolved to a moving HEAD (no
+// @<tag-or-sha>) — the trust risk runPhase warns about in the non-strict path.
+func unpinnedSources(srcs []configsrc.Source) []configsrc.Source {
+	var out []configsrc.Source
+	for _, s := range srcs {
+		if s.Unpinned {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // loadOpts builds configsrc.Options from the persistent flags + GITHUB_TOKEN env
 // (the token is deliberately env-only, never a flag). CacheDir/HTTPClient are
 // left zero so configsrc applies its own defaults.
@@ -122,7 +147,7 @@ func main() {
 		Short: "Parse and validate config.yaml without changing anything",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			refs := configRefs(flagConfig)
-			cfg, _, err := configsrc.Load(refs, loadOpts())
+			cfg, _, _, err := configsrc.Load(refs, loadOpts())
 			if err != nil {
 				return err
 			}
@@ -183,7 +208,7 @@ func main() {
 // happens before any bytes are written so an invalid merged config errors out
 // rather than emitting a bad file. Factored out so it is testable without cobra.
 func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
-	cfg, flat, err := configsrc.Load(refs, opts)
+	cfg, flat, srcs, err := configsrc.Load(refs, opts)
 	if err != nil {
 		return err
 	}
@@ -193,16 +218,38 @@ func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
 	if err := stages.ValidateHooks(cfg); err != nil {
 		return err
 	}
+	if header := configsrc.ProvenanceComment(srcs); header != "" {
+		if _, err := io.WriteString(out, header); err != nil {
+			return err
+		}
+	}
 	_, err = out.Write(flat)
 	return err
 }
 
 func runPhase(p stages.Phase) error {
 	refs := configRefs(flagConfig)
-	cfg, flat, err := configsrc.Load(refs, loadOpts())
+	cfg, flat, srcs, err := configsrc.Load(refs, loadOpts())
 	if err != nil {
 		return err
 	}
+
+	// Trust UX: --strict hard-errors on unpinned github refs in configsrc; in the
+	// non-strict path we still warn, since a moving HEAD drives destructive disk
+	// ops + arbitrary hooks. Print provenance before runStages so the user sees it
+	// ahead of the install phase's ConfirmErase prompt (inside the archinstall stage).
+	for _, s := range unpinnedSources(srcs) {
+		ui.Warn("config ref resolved to a moving HEAD; pin @<tag-or-sha>",
+			"ref", s.Ref, "url", s.URL,
+			"why", "drives destructive disk ops + arbitrary hooks")
+	}
+	if remote := remoteSources(srcs); len(remote) > 0 {
+		ui.Info("resolved remote config sources", "count", len(remote))
+		for _, s := range remote {
+			ui.Step("%s (%s) -> %s", s.Ref, s.Kind, s.URL)
+		}
+	}
+
 	ctx := &stages.Context{
 		Cfg:        cfg,
 		R:          &run.Runner{DryRun: flagDryRun, Sudo: p == stages.Bootstrap},
