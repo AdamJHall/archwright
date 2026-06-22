@@ -49,7 +49,7 @@ func TestLoadLocalSingleFileCompat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	gotCfg, _, err := Load([]string{p}, Options{})
+	gotCfg, _, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("configsrc.Load: %v", err)
 	}
@@ -79,7 +79,7 @@ kernel:
 	p := writeFile(t, dir, "config.yaml", body)
 	t.Setenv("HN", "expanded-host")
 
-	cfg, _, err := Load([]string{p}, Options{})
+	cfg, _, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -90,7 +90,7 @@ kernel:
 	// Unset variable is an error, matching config.expandEnv.
 	body2 := strings.Replace(body, "${HN}", "${UNSET_VAR_XYZ}", 1)
 	p2 := writeFile(t, dir, "bad.yaml", body2)
-	if _, _, err := Load([]string{p2}, Options{}); err == nil {
+	if _, _, _, err := Load([]string{p2}, Options{}); err == nil {
 		t.Errorf("expected error for unset env var")
 	}
 }
@@ -109,7 +109,7 @@ packages:
 `
 	p := writeFile(t, dir, "desktop.yaml", entry)
 
-	cfg, flat, err := Load([]string{p}, Options{})
+	cfg, flat, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -146,7 +146,7 @@ packages:
 `
 	p := writeFile(t, dir, "desktop.yaml", entry)
 
-	cfg, _, err := Load([]string{p}, Options{})
+	cfg, _, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -175,7 +175,7 @@ system:
 packages:
   - git
 `)
-	cfg, _, err := Load([]string{a, b}, Options{})
+	cfg, _, _, err := Load([]string{a, b}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -202,7 +202,7 @@ imports:
 packages:
   - top-pkg
 `)
-	cfg, _, err := Load([]string{p}, Options{})
+	cfg, _, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestLoadCycleDetection(t *testing.T) {
 	writeFile(t, dir, "b.yaml", "imports:\n  - a.yaml\n")
 	p := filepath.Join(dir, "a.yaml")
 
-	_, _, err := Load([]string{p}, Options{})
+	_, _, _, err := Load([]string{p}, Options{})
 	if err == nil {
 		t.Fatalf("expected cycle error")
 	}
@@ -242,7 +242,7 @@ func TestLoadDepthCap(t *testing.T) {
 		}
 		writeFile(t, dir, "f"+itoa(i)+".yaml", body)
 	}
-	_, _, err := Load([]string{filepath.Join(dir, "f0.yaml")}, Options{})
+	_, _, _, err := Load([]string{filepath.Join(dir, "f0.yaml")}, Options{})
 	if err == nil {
 		t.Fatalf("expected depth-cap error")
 	}
@@ -260,7 +260,7 @@ imports:
 packages: !replace
   - steam
 `)
-	cfg, _, err := Load([]string{p}, Options{})
+	cfg, _, _, err := Load([]string{p}, Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestLoadRawURLAndCache(t *testing.T) {
 	cacheDir := t.TempDir()
 	url := srv.URL + "/shared.yaml"
 
-	cfg, _, err := Load([]string{url}, Options{CacheDir: cacheDir, HTTPClient: srv.Client()})
+	cfg, _, _, err := Load([]string{url}, Options{CacheDir: cacheDir, HTTPClient: srv.Client()})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -292,7 +292,7 @@ func TestLoadRawURLAndCache(t *testing.T) {
 	}
 
 	// Second load should be served from cache (no new hit).
-	if _, _, err := Load([]string{url}, Options{CacheDir: cacheDir, HTTPClient: srv.Client()}); err != nil {
+	if _, _, _, err := Load([]string{url}, Options{CacheDir: cacheDir, HTTPClient: srv.Client()}); err != nil {
 		t.Fatalf("Load (cached): %v", err)
 	}
 	if hits != 1 {
@@ -300,11 +300,11 @@ func TestLoadRawURLAndCache(t *testing.T) {
 	}
 
 	// Offline with a populated cache succeeds...
-	if _, _, err := Load([]string{url}, Options{CacheDir: cacheDir, Offline: true, HTTPClient: srv.Client()}); err != nil {
+	if _, _, _, err := Load([]string{url}, Options{CacheDir: cacheDir, Offline: true, HTTPClient: srv.Client()}); err != nil {
 		t.Errorf("offline cached Load: %v", err)
 	}
 	// ...but offline with an empty cache fails.
-	if _, _, err := Load([]string{url}, Options{CacheDir: t.TempDir(), Offline: true, HTTPClient: srv.Client()}); err == nil {
+	if _, _, _, err := Load([]string{url}, Options{CacheDir: t.TempDir(), Offline: true, HTTPClient: srv.Client()}); err == nil {
 		t.Errorf("expected offline cache-miss error")
 	}
 }
@@ -325,7 +325,7 @@ func TestLoadGitHubShorthandViaTestServer(t *testing.T) {
 	defer func() { githubRawBase = old }()
 
 	ref := "github.com/AdamJHall/dotfiles/archwright.yaml@v1"
-	cfg, _, err := Load([]string{ref}, Options{CacheDir: t.TempDir(), HTTPClient: srv.Client()})
+	cfg, _, _, err := Load([]string{ref}, Options{CacheDir: t.TempDir(), HTTPClient: srv.Client()})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestLoadGitHubShorthandViaTestServer(t *testing.T) {
 }
 
 func TestLoadStrictUnpinnedGitHub(t *testing.T) {
-	_, _, err := Load([]string{"github.com/o/r/c.yaml"}, Options{Strict: true})
+	_, _, _, err := Load([]string{"github.com/o/r/c.yaml"}, Options{Strict: true})
 	if err == nil {
 		t.Fatalf("expected strict unpinned error")
 	}
