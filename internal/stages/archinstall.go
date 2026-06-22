@@ -306,12 +306,36 @@ func stageBinary(ctx *Context) error {
 	if err := ctx.R.Root("cp", self, home+"/archwright"); err != nil {
 		return err
 	}
-	if ctx.ConfigPath != "" {
-		if err := ctx.R.Root("cp", ctx.ConfigPath, home+"/config.yaml"); err != nil {
-			return err
-		}
+	if err := stageConfig(ctx, home); err != nil {
+		return err
 	}
 	return ctx.R.Chroot("/mnt", "chown", "-R", fmt.Sprintf("%s:%s", user, user), "/home/"+user)
+}
+
+// stageConfig writes the config Phase B will read into the target home. When
+// ctx.FlatConfig is set (the resolved+merged config from configsrc), it is
+// written to a temp file and copied in via Root("cp", ...) so the operation is
+// recorded and dry-run-safe like the binary copy. With no flattened config it
+// falls back to copying ctx.ConfigPath verbatim (single-file, back-compat).
+func stageConfig(ctx *Context, home string) error {
+	dst := home + "/config.yaml"
+	if ctx.FlatConfig != nil {
+		tmp, err := os.CreateTemp("", "archwright-flat-*.yaml")
+		if err != nil {
+			return fmt.Errorf("staging flattened config: %w", err)
+		}
+		tmp.Close()
+		// In dry-run we still write the temp file so the recorded cp has a real
+		// source; the cp itself is recorded (not executed) by the Runner.
+		if err := os.WriteFile(tmp.Name(), ctx.FlatConfig, 0o600); err != nil {
+			return fmt.Errorf("staging flattened config: %w", err)
+		}
+		return ctx.R.Root("cp", tmp.Name(), dst)
+	}
+	if ctx.ConfigPath != "" {
+		return ctx.R.Root("cp", ctx.ConfigPath, dst)
+	}
+	return nil
 }
 
 func writeJSON(path string, v any, mode os.FileMode) error {
