@@ -294,6 +294,19 @@ setup:
     # Example of a non-clone installer (runs in place, between/after clones):
     # - command: curl -sS https://starship.rs/install.sh | sh -s -- -y
 
+# --- services (optional) ----------------------------------------------------
+# systemd units to `systemctl enable` last (after dotfiles + setup) so they
+# start on the next boot. `enable` is system units (enabled as root); `user` is
+# per-user units (enabled with `systemctl --user`). The .service suffix is
+# optional. Units are enabled, not started underneath the current session — the
+# common case is a login/display-manager unit that takes over after reboot.
+# services:
+#   enable:
+#     - plasmalogin.service   # SDDM/Plasma login on next boot
+#     - bluetooth.service
+#   user:
+#     - syncthing.service
+
 # --- hooks (optional) -------------------------------------------------------
 # Run your own commands at lifecycle points instead of writing a Go stage — the
 # general escape hatch for snap/cargo/gsettings/etc. `at` is one of the global
