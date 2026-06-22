@@ -162,14 +162,3 @@ func installKernelsSystemdBoot(ctx *Context, k config.KernelConfig) error {
 	)
 	return chrootShell(ctx, set)
 }
-
-// partDev returns the kernel partition device for a base device and number:
-// /dev/sda -> /dev/sda1, but /dev/nvme0n1 -> /dev/nvme0n1p1.
-func partDev(dev string, n int) string {
-	if len(dev) > 0 {
-		if last := dev[len(dev)-1]; last >= '0' && last <= '9' {
-			return fmt.Sprintf("%sp%d", dev, n)
-		}
-	}
-	return fmt.Sprintf("%s%d", dev, n)
-}

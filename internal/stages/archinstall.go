@@ -126,7 +126,7 @@ func postInstall(ctx *Context) error {
 	if err != nil {
 		return err
 	}
-	esp := partDev(ctx.Cfg.Disks.ESP.Device, 1)
+	esp := archinstall.PartDev(ctx.Cfg.Disks.ESP.Device, 1)
 
 	// Checked mounts (Issue #2): a failed remount must abort, not silently run the
 	// chroot steps against an empty /mnt. (The umounts below stay best-effort.)
@@ -269,7 +269,7 @@ func rootDevice(cfg *config.Config) (string, error) {
 		if cfg.Disks.Swap.EffectiveType() == "partition" {
 			rootIdx = 3
 		}
-		return partDev(cfg.Disks.ESP.Device, rootIdx), nil
+		return archinstall.PartDev(cfg.Disks.ESP.Device, rootIdx), nil
 	default:
 		return "", fmt.Errorf("unknown disks.layout %q", cfg.Disks.Layout)
 	}

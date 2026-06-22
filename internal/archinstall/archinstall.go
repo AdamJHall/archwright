@@ -433,7 +433,7 @@ func (b *lvmBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
 		}
 	}
 	if disk1PV == "" {
-		return nil, nil, fmt.Errorf("no LVM PV found on disk 1 (%s); expected a partition like %s", disk1, partDev(disk1, 2))
+		return nil, nil, fmt.Errorf("no LVM PV found on disk 1 (%s); expected a partition like %s", disk1, PartDev(disk1, 2))
 	}
 
 	// Disk 1: ESP + PV partition (no swap partition). Sizes computed from geometry.
@@ -730,8 +730,10 @@ func splitLocale(locale string) (lang, enc string) {
 	return locale, "UTF-8"
 }
 
-// partDev mirrors stages.partDev for the disk-1 PV error hint.
-func partDev(dev string, n int) string {
+// PartDev returns the kernel partition device for a base device and number:
+// /dev/sda -> /dev/sda1, but /dev/nvme0n1 -> /dev/nvme0n1p1. It is the single
+// shared definition; the stages package calls it rather than duplicating it.
+func PartDev(dev string, n int) string {
 	if len(dev) > 0 {
 		if last := dev[len(dev)-1]; last >= '0' && last <= '9' {
 			return fmt.Sprintf("%sp%d", dev, n)
