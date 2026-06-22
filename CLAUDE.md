@@ -89,3 +89,52 @@ Add fields with their tags, then a table case in `config_test.go`.
   rules: maps recurse, string lists union+dedup, name-keyed structured lists merge by `name`,
   `!replace` forces wholesale replace. `configsrc.Load` returns the merged config *and* the
   flattened bytes; `render` writes them out without running stages.
+
+## Building features with parallel agents (wave playbook)
+
+This codebase's extensibility was built across six "waves," each a fan-out of worktree
+subagents merged into one branch + PR. The hard-won process rules (distilled from the wave
+retrospectives — keep them, they paid off every time):
+
+- **Partition by file *region* ownership, not just by feature.** The shared hotspots are
+  `config.go` (every feature adds a struct field) and `main.go`'s `runPhase`/`renderConfig`.
+  Give each agent a **distinct anchor** in a shared file (top-of-struct vs. a named sub-block
+  vs. end-of-struct; different functions in `main.go`). Additive edits at disjoint regions
+  **auto-merge** — most waves needed zero hand-merges.
+- **Additive work fans out in parallel; layered work is sequenced into rounds.** Independent
+  struct fields/stages → one parallel round. A genuine dependency chain (e.g. configsrc API ←
+  CLI wiring) → **Round 1 builds the foundation alone, Round 2 fans out off the integrated
+  branch.** Forcing layered work parallel just creates stub-and-reconcile churn.
+- **Agree the API contract up front.** When Round 2 codes against a Round 1 package, put the
+  exact signatures in *both* prompts — zero interface drift.
+- **The orchestrator does mechanical cross-cutting edits centrally.** A signature migration
+  (e.g. adding a return value to a function called from N sites) is done once by the
+  orchestrator with `_` placeholders; each Round-2 agent then flips only *its own* `_`→var in
+  *its own* function, so the shared file still auto-merges.
+- **New test files, never shared fixtures.** Agents add `*_test.go` with self-contained config
+  snippets instead of editing the shared `testYAML`/`testConfig`/golden cases. This is the
+  rule that keeps test files conflict-free. (When two agents *must* both make a field
+  `required`, every shared fixture conflicts — union the hunks, but check each "theirs" side
+  for a key the *other* agent deleted.)
+- **Default-preserves-behaviour gating.** Every new feature must degrade to today's output when
+  its config is unset, so all existing golden snapshots pass *without* `-update`. New behaviour
+  is proven by inline-config field-assertion tests, never by touching the goldens. For a schema
+  shape change, use **two commits**: the behaviour-preserving refactor (goldens unchanged) then
+  the shape change (regenerate goldens) — the diff stays reviewable.
+- **Unowned-file consequences: agent reports, orchestrator fixes.** If a feature has a knock-on
+  effect in a file no agent owns (a registry expectation, a helper keyed off a now-empty field),
+  have the agent flag it rather than reach outside its region; the orchestrator fixes it
+  centrally and adds the regression test.
+- **Worktree mechanics.** Use the Agent tool's built-in `isolation: "worktree"` (rooted under
+  `.claude/worktrees/`, inside the sandbox) — never hand-roll external `git worktree add` dirs,
+  they're unreachable from the agent sandbox. Each worktree branches off `main`'s HEAD, so a
+  Round-2 agent must `git reset --hard <integration-branch>` first — **tell it the base branch
+  in the prompt.** `.claude/worktrees/` is gitignored; never `git add -A` (it sweeps in the
+  worktree checkouts as embedded repos and untracked files — stage explicit paths).
+- **After every merge:** `gofmt -l .` (catches struct-tag realignment), `go build/vet/test
+  ./...`. Background agents can't answer permission prompts, so pre-authorise
+  `Edit`/`Write`/`Bash(go …)`/`Bash(git …)` or every write auto-denies.
+- **The TUI is a known dead-end.** A scrollable bubbletea viewport was built and reverted: the
+  alt-screen owns stdin, so the arbitrary interactive subprocess prompts archwright runs
+  (`repos[].setup`, e.g. `cachyos-repo.sh`) can't be answered. Don't re-attempt without a PTY
+  multiplexer plan and up-front VM testing — see the "no bubbletea spinner" gotcha above.
