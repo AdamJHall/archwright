@@ -18,6 +18,9 @@ system:
   keymap: uk
 user:
   name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp:
@@ -94,6 +97,9 @@ system:
   keymap: uk
 user:
   name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -150,6 +156,9 @@ system:
   keymap: uk
 user:
   name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}
@@ -190,6 +199,9 @@ system:
   keymap: uk%s
 user:
   name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
 disks:
   layout: lvm
   esp: {device: /dev/nvme0n1, size: 1GiB}

@@ -16,6 +16,8 @@ func TestRootDevice_MultiVolume(t *testing.T) {
 	body := `
 system: {hostname: a, timezone: T, locale: en_GB.UTF-8, keymap: uk}
 user: {name: adam}
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel: {base: [linux]}
 disks:
   esp: {device: /dev/nvme0n1, size: 1GiB}
   swap: {type: zram}

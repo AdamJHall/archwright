@@ -188,6 +188,9 @@ CONFIG="$WORKDIR/config.yaml"
 	cat <<-YAML
 	mirrors:
 	  reflector: false
+	pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+	kernel:
+	  base: [linux]
 	packages: []
 	YAML
 } >"$CONFIG"

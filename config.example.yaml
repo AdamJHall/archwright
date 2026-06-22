@@ -138,12 +138,18 @@ repos:
   #   keyserver: keyserver.ubuntu.com
   #   include: /etc/pacman.d/chaotic-mirrorlist
 
-# Extra packages added to the initial pacstrap (Phase A), so they're on the
-# system at first boot. Use for things that must precede first boot — notably
-# CPU microcode, which GRUB folds into the early initramfs at install time.
-# Everything else belongs in `packages` below (installed in Phase B).
-pacstrap_extra:
-  - intel-ucode                  # or amd-ucode
+# The COMPLETE Phase-A pacstrap set, rendered verbatim — nothing is added in
+# code. It must list everything the installed system needs at first boot.
+# preflight warns about recommended-but-absent entries but never re-adds them.
+# Most software belongs in `packages` below (installed in Phase B).
+pacstrap:
+  - base-devel                   # needed by Phase B to build the AUR helper
+  - git                          # same
+  - zsh                          # the user's login shell (user.shell)
+  - sudo                         # Phase B runs as the user via sudo
+  - networkmanager               # network at first boot
+  - efibootmgr                   # UEFI boot entry management
+  - intel-ucode                  # CPU microcode (or amd-ucode); folded into initramfs
 
 packages:                        # official-repo packages (pacman -S --needed)
   - base-devel
@@ -156,24 +162,28 @@ packages:                        # official-repo packages (pacman -S --needed)
   - starship
   - fzf
 
-# Extra kernels, installed in Phase A from the repos above (so first boot already
-# runs them). archinstall always installs the stock `linux` for a bootable
-# baseline; replace_stock removes it before first boot so nothing lingers.
+# Kernels. `base` is what archinstall pacstraps for a bootable baseline (it MUST
+# be in the live ISO's official repos — the custom `repos:` above are only set up
+# later in the chroot — so a custom kernel like linux-cachyos belongs in
+# `packages`, NOT `base`). `packages` are extra kernels installed in Phase A from
+# the repos above, so first boot can already run them.
 kernel:
-  packages: [linux-cachyos, linux-cachyos-headers]
-  default: linux-cachyos         # GRUB default entry; must be one of packages
+  base: [linux]                  # pacstrapped baseline; official-repo kernels only
+  packages: [linux-cachyos, linux-cachyos-headers]   # extra kernels (installed in the chroot)
+  default: linux-cachyos         # GRUB default entry; must be in base ∪ packages
   replace_stock: true            # remove the stock `linux` kernel after install
+                                 # (redundant if you set base to your kernel directly)
 
-flatpaks:                        # installed from Flathub
-  - com.spotify.Client
-  - org.mozilla.firefox
-  - com.stremio.Stremio
+# The COMPLETE set of flatpak remotes — nothing is added implicitly, so list
+# every remote your apps install from (including Flathub).
+flatpak_remotes:
+  - { name: flathub, url: https://flathub.org/repo/flathub.flatpakrepo }
+  # - { name: flathub-beta, url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo }
 
-# Extra flatpak remotes registered before installing (the built-in Flathub remote
-# is always added, so the apps above keep working). Add others you install from
-# via hooks or your dotfiles.
-# flatpak_remotes:
-#   - { name: flathub-beta, url: https://flathub.org/beta-repo/flathub-beta.flatpakrepo }
+flatpaks:                        # each app names its remote: "remote:appid"
+  - flathub:com.spotify.Client   # (remote must be declared in flatpak_remotes above)
+  - flathub:org.mozilla.firefox
+  - flathub:com.stremio.Stremio
 
 aur:                             # built via the AUR helper (see aur_helper)
   - 1password

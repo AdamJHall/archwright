@@ -48,15 +48,22 @@ type Config struct {
 	Mirrors  MirrorConfig `yaml:"mirrors"`
 	Repos    []Repo       `yaml:"repos" validate:"dive"`
 	Packages []string     `yaml:"packages"`
-	// PacstrapExtra are packages added to archinstall's pacstrap (Phase A), so
-	// they are present on first boot — for things that must precede or be part of
-	// the initial system, e.g. microcode (intel-ucode/amd-ucode) which GRUB needs
-	// at config-generation time. Most software belongs in Packages (Phase B).
-	PacstrapExtra []string     `yaml:"pacstrap_extra"`
-	Kernel        KernelConfig `yaml:"kernel"`
-	Flatpaks      []string     `yaml:"flatpaks"`
-	// FlatpakRemotes are extra flatpak remotes registered (in addition to the
-	// always-added built-in flathub remote) before installing apps.
+	// Pacstrap is the COMPLETE Phase-A pacstrap set, rendered verbatim into the
+	// archinstall config — nothing is prepended in code. It must list everything
+	// the installed system needs at first boot: the base set Phase B relies on
+	// (base-devel/git to build the AUR helper, the login shell, sudo,
+	// networkmanager for first-boot networking), boot tooling (efibootmgr), and
+	// CPU microcode (intel-ucode/amd-ucode). preflight warns about recommended-
+	// but-absent entries; it never silently re-adds them. Most software belongs
+	// in Packages (Phase B).
+	Pacstrap []string     `yaml:"pacstrap" validate:"required,min=1,dive,required"`
+	Kernel   KernelConfig `yaml:"kernel"`
+	// Flatpaks lists apps to install, each as a "remote:appid" reference whose
+	// remote must be declared in FlatpakRemotes (enforced in semanticErrors).
+	Flatpaks []string `yaml:"flatpaks"`
+	// FlatpakRemotes is the COMPLETE set of flatpak remotes registered before
+	// installing apps — nothing is implicit. If you install from Flathub, list it
+	// here.
 	FlatpakRemotes []FlatpakRemote `yaml:"flatpak_remotes" validate:"dive"`
 	AUR            []string        `yaml:"aur"`
 	// AurHelper selects the AUR helper to install and use in Phase B. Empty
@@ -109,6 +116,12 @@ type Config struct {
 	// Empty defaults to "grub" (today's behavior). systemd-boot is reverse-engineered
 	// and VM-validation-pending (see CLAUDE.md archinstall-drift rule).
 	Bootloader BootloaderConfig `yaml:"bootloader"`
+
+	// PacstrapExtraDeprecated captures the removed `pacstrap_extra` key so
+	// semanticErrors can emit a clear rename-to-`pacstrap` migration error for one
+	// release, rather than silently ignoring a config that used the old key. It is
+	// not part of the schema and has no validate rules.
+	PacstrapExtraDeprecated []string `yaml:"pacstrap_extra"`
 }
 
 // DisksConfig describes the disk layout archinstall should create. Layout is a
@@ -266,8 +279,9 @@ type Hook struct {
 	Dir    string            `yaml:"dir"`
 }
 
-// FlatpakRemote is an extra flatpak remote registered before installing apps.
-// The built-in "flathub" remote is always added; list others here.
+// FlatpakRemote is a flatpak remote registered before installing apps. The
+// flatpak_remotes list is complete — no remote (not even flathub) is added
+// implicitly, so every remote an app installs from must appear here.
 type FlatpakRemote struct {
 	Name string `yaml:"name" validate:"required"`
 	URL  string `yaml:"url"  validate:"required,url"`
@@ -297,8 +311,13 @@ type Repo struct {
 // pacstraps the stock `linux` kernel for a bootable baseline; ReplaceStock removes
 // it afterwards (before first boot) so nothing lingers.
 type KernelConfig struct {
-	Packages     []string `yaml:"packages"`      // e.g. [linux-cachyos, linux-cachyos-headers]
-	Default      string   `yaml:"default"`       // GRUB top-level (default) kernel; must be one of Packages
+	// Base are the kernel(s) archinstall pacstraps for a bootable baseline. They
+	// must be available in the live ISO's official repos (the custom `repos:` are
+	// configured later, in the chroot), so a custom kernel like linux-cachyos
+	// belongs in Packages, not Base.
+	Base         []string `yaml:"base" validate:"required,min=1,dive,required"`
+	Packages     []string `yaml:"packages"`      // extra kernels installed in the chroot (post-repo-setup)
+	Default      string   `yaml:"default"`       // GRUB top-level (default) kernel; must be in Base ∪ Packages
 	ReplaceStock bool     `yaml:"replace_stock"` // remove the stock `linux` kernel after install
 }
 
@@ -420,12 +439,15 @@ func (c *Config) Validate() error {
 // semanticErrors covers cross-field rules that struct tags can't express.
 func (c *Config) semanticErrors() []error {
 	var errs []error
+	if len(c.PacstrapExtraDeprecated) > 0 {
+		errs = append(errs, fmt.Errorf("pacstrap_extra has been removed: rename it to `pacstrap` and add the base set (base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode) — see config.example.yaml"))
+	}
 	k := c.Kernel
 	if k.ReplaceStock && len(k.Packages) == 0 {
 		errs = append(errs, fmt.Errorf("kernel.replace_stock requires at least one kernel.packages entry (otherwise the system would have no kernel)"))
 	}
-	if k.Default != "" && !slices.Contains(k.Packages, k.Default) {
-		errs = append(errs, fmt.Errorf("kernel.default %q must be one of kernel.packages", k.Default))
+	if k.Default != "" && !slices.Contains(k.Base, k.Default) && !slices.Contains(k.Packages, k.Default) {
+		errs = append(errs, fmt.Errorf("kernel.default %q must be one of kernel.base or kernel.packages", k.Default))
 	}
 	for i, s := range c.Setup.Steps {
 		switch {
@@ -438,6 +460,30 @@ func (c *Config) semanticErrors() []error {
 	errs = append(errs, c.diskErrors()...)
 	errs = append(errs, c.encryptionErrors()...)
 	errs = append(errs, c.lvmVolumeErrors()...)
+	errs = append(errs, c.flatpakErrors()...)
+	return errs
+}
+
+// flatpakErrors enforces the per-app remote rules struct tags can't express:
+// every flatpaks entry is a "remote:appid" reference (exactly one ":", both
+// halves non-empty) whose remote is declared in flatpak_remotes. This catches
+// typos and undeclared remotes at validate time, before anything runs.
+func (c *Config) flatpakErrors() []error {
+	var errs []error
+	declared := make(map[string]bool, len(c.FlatpakRemotes))
+	for _, rem := range c.FlatpakRemotes {
+		declared[rem.Name] = true
+	}
+	for i, app := range c.Flatpaks {
+		remote, appid, ok := strings.Cut(app, ":")
+		if !ok || remote == "" || appid == "" {
+			errs = append(errs, fmt.Errorf("flatpaks[%d] %q must be \"remote:appid\" (e.g. flathub:com.example.App)", i, app))
+			continue
+		}
+		if !declared[remote] {
+			errs = append(errs, fmt.Errorf("flatpaks[%d] remote %q is not declared in flatpak_remotes (add it there or fix the name)", i, remote))
+		}
+	}
 	return errs
 }
 

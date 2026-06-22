@@ -39,12 +39,16 @@ mirrors:
 repos:
   - name: cachyos
     setup: "cachyos-repo.sh --install"
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
 packages: [git]
 kernel:
+  base: [linux]
   packages: [linux-cachyos, linux-cachyos-headers]
   default: linux-cachyos
   replace_stock: true
-flatpaks: [com.spotify.Client]
+flatpak_remotes:
+  - { name: flathub, url: https://flathub.org/repo/flathub.flatpakrepo }
+flatpaks: [flathub:com.spotify.Client]
 aur: [1password]
 plymouth:
   theme: bgrt
@@ -217,9 +221,23 @@ func TestValidate_Errors(t *testing.T) {
 			want: []string{"kernel.replace_stock requires at least one kernel.packages"},
 		},
 		{
-			name: "default kernel not in packages",
+			name: "default kernel in neither base nor packages",
 			yaml: strings.Replace(validYAML, "default: linux-cachyos", "default: linux-zen", 1),
-			want: []string{`kernel.default "linux-zen" must be one of kernel.packages`},
+			want: []string{`kernel.default "linux-zen" must be one of kernel.base or kernel.packages`},
+		},
+		{
+			name: "empty pacstrap list",
+			yaml: strings.Replace(validYAML,
+				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
+				"pacstrap: []", 1),
+			want: []string{"pacstrap must have at least 1 item(s)"},
+		},
+		{
+			name: "deprecated pacstrap_extra key errors",
+			yaml: strings.Replace(validYAML,
+				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
+				"pacstrap: [base]\npacstrap_extra: [intel-ucode]", 1),
+			want: []string{"pacstrap_extra has been removed", "rename it to `pacstrap`"},
 		},
 		{
 			name: "bad reflector sort",
@@ -247,6 +265,27 @@ func TestValidate_Errors(t *testing.T) {
 				"    - command: curl -sS https://starship.rs/install.sh | sh -s -- -y",
 				"    - command: echo hi\n      clone:\n        url: https://github.com/x/y\n        dest: ~/y", 1),
 			want: []string{"setup.steps[1] must set exactly one of command or clone, not both"},
+		},
+		// --- flatpak remote:appid validation (D2) ---
+		{
+			name: "flatpak missing remote prefix (no colon)",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [com.spotify.Client]", 1),
+			want: []string{`flatpaks[0] "com.spotify.Client" must be "remote:appid"`},
+		},
+		{
+			name: "flatpak empty appid half",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [flathub:]", 1),
+			want: []string{`flatpaks[0] "flathub:" must be "remote:appid"`},
+		},
+		{
+			name: "flatpak empty remote half",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [':com.spotify.Client']", 1),
+			want: []string{`must be "remote:appid"`},
+		},
+		{
+			name: "flatpak undeclared remote",
+			yaml: strings.Replace(validYAML, "flatpaks: [flathub:com.spotify.Client]", "flatpaks: [bogus:com.spotify.Client]", 1),
+			want: []string{`flatpaks[0] remote "bogus" is not declared in flatpak_remotes`},
 		},
 	}
 

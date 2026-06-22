@@ -15,6 +15,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/AdamJHall/archwright/internal/config"
 	"github.com/AdamJHall/archwright/internal/run"
@@ -29,11 +30,14 @@ var version = "dev"
 
 // Persistent flag values, bound on the root command.
 var (
-	flagDryRun bool
-	flagOnly   string
-	flagSkip   []string
-	flagConfig string
-	flagYes    bool
+	flagDryRun  bool
+	flagOnly    string
+	flagSkip    []string
+	flagFrom    string
+	flagTo      string
+	flagConfig  string
+	flagYes     bool
+	flagNoColor bool
 )
 
 func main() {
@@ -48,7 +52,17 @@ func main() {
 	pf.BoolVar(&flagDryRun, "dry-run", false, "print commands instead of running them")
 	pf.StringVar(&flagOnly, "only", "", "run a single stage by name or number")
 	pf.StringArrayVar(&flagSkip, "skip", nil, "skip a stage by name or number (repeatable)")
+	pf.StringVar(&flagFrom, "from", "", "resume from a stage by name or number (inclusive)")
+	pf.StringVar(&flagTo, "to", "", "stop after a stage by name or number (inclusive)")
 	pf.StringVar(&flagConfig, "config", "config.yaml", "path to config.yaml")
+	pf.BoolVar(&flagNoColor, "no-color", false, "disable coloured output (NO_COLOR is also honoured)")
+
+	// Apply colour preference once flags are parsed, before any output.
+	root.PersistentPreRun = func(_ *cobra.Command, _ []string) {
+		if flagNoColor || os.Getenv("NO_COLOR") != "" {
+			ui.DisableColor()
+		}
+	}
 
 	installCmd := &cobra.Command{
 		Use:   "install",
@@ -122,20 +136,47 @@ func runPhase(p stages.Phase) error {
 	}
 
 	selected := stages.Select(p, flagOnly, flagSkip, cfg.Stages.Disable)
+	if selected, err = stages.Within(selected, flagFrom, flagTo); err != nil {
+		return err
+	}
 	if len(selected) == 0 {
 		return fmt.Errorf("no stages matched (--only %q, --skip %v, stages.disable %v)", flagOnly, flagSkip, cfg.Stages.Disable)
 	}
+
+	return runStages(ctx, p, selected)
+}
+
+// phaseName is the lowercase label used in run bookends ("install"/"bootstrap").
+func phaseName(p stages.Phase) string {
+	if p == stages.Bootstrap {
+		return "bootstrap"
+	}
+	return "install"
+}
+
+// runStages executes the pre/before/after/post hook lifecycle around each stage,
+// streaming each stage's output straight through the terminal. It frames the run
+// with a banner + summary and prints an [i/n] progress header and elapsed time
+// per stage.
+func runStages(ctx *stages.Context, p stages.Phase, selected []stages.Stage) error {
+	total := len(selected)
+	start := time.Now()
+	ui.RunBanner(version, phaseName(p), total, ctx.R.DryRun)
+
 	if err := stages.FireHooks(ctx, stages.PhasePre(p)); err != nil {
 		return err
 	}
-	for _, s := range selected {
+	for i, s := range selected {
 		if err := stages.FireHooks(ctx, "before:"+s.Name()); err != nil {
 			return err
 		}
-		ui.Header(s.Order(), s.Name())
+		ui.StageStart(i+1, total, s.Order(), s.Name())
+		stageStart := time.Now()
 		if err := s.Run(ctx); err != nil {
+			ui.RunFailed(i+1, total, s.Name(), time.Since(start))
 			return fmt.Errorf("stage %s: %w", s.Name(), err)
 		}
+		ui.StageTime(time.Since(stageStart))
 		if err := stages.FireHooks(ctx, "after:"+s.Name()); err != nil {
 			return err
 		}
@@ -143,6 +184,6 @@ func runPhase(p stages.Phase) error {
 	if err := stages.FireHooks(ctx, stages.PhasePost(p)); err != nil {
 		return err
 	}
-	ui.OK("done")
+	ui.RunComplete(phaseName(p), total, time.Since(start))
 	return nil
 }
