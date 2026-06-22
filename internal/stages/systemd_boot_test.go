@@ -16,13 +16,14 @@ grub:
   cmdline_extra: "quiet splash"
 `)
 	mustContain(t, plan,
-		// each cmdline token appended to /etc/kernel/cmdline, idempotently
+		// each cmdline token appended to /etc/kernel/cmdline, idempotently. The
+		// whole pipeline runs as root via RootShell, so no inner per-command sudo.
 		`grep -qE '\bquiet\b' /etc/kernel/cmdline 2>/dev/null || `+
-			`{ sudo touch /etc/kernel/cmdline && `+
-			`sudo sed -i -E '$ s/$/ quiet/' /etc/kernel/cmdline; }`,
+			`{ touch /etc/kernel/cmdline && `+
+			`sed -i -E '$ s/$/ quiet/' /etc/kernel/cmdline; }`,
 		`grep -qE '\bsplash\b' /etc/kernel/cmdline 2>/dev/null || `+
-			`{ sudo touch /etc/kernel/cmdline && `+
-			`sudo sed -i -E '$ s/$/ splash/' /etc/kernel/cmdline; }`,
+			`{ touch /etc/kernel/cmdline && `+
+			`sed -i -E '$ s/$/ splash/' /etc/kernel/cmdline; }`,
 		// systemd-boot refresh, no grub.cfg regeneration
 		"bootctl update",
 	)
@@ -43,9 +44,9 @@ grub:
 `)
 	mustContain(t, plan,
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\bquiet\b' /etc/default/grub || `+
-			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1quiet /' /etc/default/grub`,
+			`sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1quiet /' /etc/default/grub`,
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\bsplash\b' /etc/default/grub || `+
-			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1splash /' /etc/default/grub`,
+			`sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1splash /' /etc/default/grub`,
 		"grub-mkconfig -o /boot/grub/grub.cfg",
 	)
 	mustNotContain(t, plan,
