@@ -32,15 +32,16 @@ func ensureKernelParam(ctx *Context, tok string) error {
 	if ctx.Cfg.Bootloader.EffectiveKind() == "systemd-boot" {
 		// /etc/kernel/cmdline is a single space-separated line. Add tok only if its
 		// word boundary isn't already present; create the file if it doesn't exist.
-		return ctx.R.Shell(fmt.Sprintf(
+		// The whole pipeline runs as root via RootShell, so no inner per-command sudo.
+		return ctx.R.RootShell(fmt.Sprintf(
 			`grep -qE '\b%[1]s\b' /etc/kernel/cmdline 2>/dev/null || `+
-				`{ sudo touch /etc/kernel/cmdline && `+
-				`sudo sed -i -E '$ s/$/ %[1]s/' /etc/kernel/cmdline; }`,
+				`{ touch /etc/kernel/cmdline && `+
+				`sed -i -E '$ s/$/ %[1]s/' /etc/kernel/cmdline; }`,
 			tok))
 	}
-	return ctx.R.Shell(fmt.Sprintf(
+	return ctx.R.RootShell(fmt.Sprintf(
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\b%[1]s\b' /etc/default/grub || `+
-			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1%[1]s /' /etc/default/grub`,
+			`sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1%[1]s /' /etc/default/grub`,
 		tok))
 }
 

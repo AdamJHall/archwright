@@ -17,9 +17,9 @@ grub:
 	mustContain(t, plan,
 		// each cmdline token appended to GRUB_CMDLINE_LINUX_DEFAULT, idempotently
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\bquiet\b' /etc/default/grub || `+
-			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1quiet /' /etc/default/grub`,
+			`sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1quiet /' /etc/default/grub`,
 		`grep -qE 'GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\bsplash\b' /etc/default/grub || `+
-			`sudo sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1splash /' /etc/default/grub`,
+			`sed -i -E 's/(GRUB_CMDLINE_LINUX_DEFAULT=")/\1splash /' /etc/default/grub`,
 		// bootloader config regenerated after the cmdline/theme change
 		"grub-mkconfig -o /boot/grub/grub.cfg",
 	)

@@ -28,6 +28,8 @@ func (grubtheme) Run(ctx *Context) error {
 			return fmt.Errorf("grub.theme.name required for source 'vinceliuice'")
 		}
 		// Clone + run the upstream installer (it sets GRUB_THEME and regenerates).
+		// cloneBuild runs as the user (it mktemp/git-clones into the user's tree),
+		// so install.sh keeps its inner `sudo` to gain root for the system writes.
 		if err := cloneBuild(ctx,
 			"--depth 1 https://github.com/vinceliuice/grub2-themes",
 			fmt.Sprintf("sudo ./install.sh -t %s", t.Name)); err != nil {
@@ -41,16 +43,17 @@ func (grubtheme) Run(ctx *Context) error {
 			return fmt.Errorf("grub.theme.name and grub.theme.url required for source 'url'")
 		}
 		dest := "/boot/grub/themes/" + t.Name
-		if err := ctx.R.Shell(fmt.Sprintf(
+		// Whole pipeline runs as root via RootShell, so no inner per-command sudo.
+		if err := ctx.R.RootShell(fmt.Sprintf(
 			`tmp="$(mktemp -d)" && curl -fsSL %[1]q -o "$tmp/theme.tar.gz" && `+
-				`sudo mkdir -p %[2]q && sudo tar -xf "$tmp/theme.tar.gz" -C %[2]q --strip-components=1 && rm -rf "$tmp"`,
+				`mkdir -p %[2]q && tar -xf "$tmp/theme.tar.gz" -C %[2]q --strip-components=1 && rm -rf "$tmp"`,
 			t.URL, dest)); err != nil {
 			return err
 		}
-		if err := ctx.R.Shell(fmt.Sprintf(
-			`sudo sed -i '/^#\?GRUB_THEME=/d' /etc/default/grub && `+
-				`echo 'GRUB_THEME="%s/theme.txt"' | sudo tee -a /etc/default/grub >/dev/null && `+
-				`sudo grub-mkconfig -o /boot/grub/grub.cfg`, dest)); err != nil {
+		if err := ctx.R.RootShell(fmt.Sprintf(
+			`sed -i '/^#\?GRUB_THEME=/d' /etc/default/grub && `+
+				`echo 'GRUB_THEME="%s/theme.txt"' >>/etc/default/grub && `+
+				`grub-mkconfig -o /boot/grub/grub.cfg`, dest)); err != nil {
 			return err
 		}
 		ui.OK("GRUB theme %q installed from url", t.Name)

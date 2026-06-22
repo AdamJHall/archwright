@@ -49,9 +49,9 @@ func (s snapper) Run(ctx *Context) error {
 
 	// Create the root config only when it does not already exist — create-config
 	// errors out on an existing config, so grep-guard it for idempotent re-runs.
-	if err := ctx.R.Shell(
+	if err := ctx.R.RootShell(
 		`snapper list-configs 2>/dev/null | grep -qw root || ` +
-			`sudo snapper -c root create-config /`,
+			`snapper -c root create-config /`,
 	); err != nil {
 		return err
 	}
@@ -59,7 +59,7 @@ func (s snapper) Run(ctx *Context) error {
 	// Sane retention: keep the timeline tidy and cap the number of snapshots.
 	// Best-effort (Try) — a freshly-created config has these set, and a re-run
 	// must not fail the stage if set-config is fussy about an already-present key.
-	ctx.R.Try("sudo", "snapper", "-c", "root", "set-config",
+	ctx.R.TryRoot("snapper", "-c", "root", "set-config",
 		"TIMELINE_LIMIT_HOURLY=5",
 		"TIMELINE_LIMIT_DAILY=7",
 		"TIMELINE_LIMIT_WEEKLY=4",

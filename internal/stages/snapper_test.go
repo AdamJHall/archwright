@@ -22,14 +22,15 @@ disks:
 
 	// snap-pac is always installed (it has no binary, so it goes through Root).
 	mustContain(t, plan, "sudo pacman -S --needed --noconfirm snap-pac")
-	// Root config creation is grep-guarded so a re-run with an existing config
-	// does not fail.
-	if !strings.Contains(j, "snapper -c root create-config /") {
-		t.Errorf("plan should create the root snapper config, got:\n%s", j)
+	// Root config creation runs as root via RootShell (recorded as a plain
+	// `sh: ...` line, no inner sudo) and is grep-guarded so a re-run with an
+	// existing config does not fail.
+	if !strings.Contains(j, "sh: snapper list-configs 2>/dev/null | grep -qw root || snapper -c root create-config /") {
+		t.Errorf("plan should create the root snapper config via RootShell, got:\n%s", j)
 	}
-	if !strings.Contains(j, "snapper list-configs") {
-		t.Errorf("create-config should be grep-guarded on existing configs, got:\n%s", j)
-	}
+	// set-config runs best-effort as root (TryRoot) — recorded with the sudo
+	// prefix in Phase B.
+	mustContain(t, plan, "sudo snapper -c root set-config")
 	// Timers are enabled.
 	mustContain(t,
 		plan,
