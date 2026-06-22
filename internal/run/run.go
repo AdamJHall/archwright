@@ -6,9 +6,7 @@
 package run
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,10 +18,6 @@ type Runner struct {
 	DryRun bool // print/record commands instead of executing them
 	Sudo   bool // prefix privileged commands with sudo (Phase B as user); false in Phase A (already root)
 
-	// Out, when non-nil, receives BOTH stdout and stderr of every executed
-	// command. It is the hook for a TUI viewport that captures streamed output;
-	// when nil, output streams to os.Stdout/os.Stderr exactly as before.
-	Out io.Writer
 	// Env, when non-empty, is layered (key=value) on top of the inherited process
 	// environment for every executed command. Dir, when set, is the working dir.
 	Env map[string]string
@@ -35,15 +29,6 @@ type Runner struct {
 }
 
 func (r *Runner) record(line string) { r.Plan = append(r.Plan, line) }
-
-// outWriter returns r.Out when set, else the given default stream, so a nil Out
-// preserves the original os.Stdout/os.Stderr wiring exactly.
-func (r *Runner) outWriter(def io.Writer) io.Writer {
-	if r.Out != nil {
-		return r.Out
-	}
-	return def
-}
 
 // prepare applies the Runner's Env and Dir (if any) to a command before it runs.
 func (r *Runner) prepare(cmd *exec.Cmd) {
@@ -70,34 +55,12 @@ func (r *Runner) Cmd(name string, args ...string) error {
 		return nil
 	}
 	cmd := exec.Command(name, args...)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin = r.outWriter(os.Stdout), r.outWriter(os.Stderr), os.Stdin
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
 	r.prepare(cmd)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 	return nil
-}
-
-// Capture runs name+args and returns the command's stdout as a string, recording
-// it in .Plan exactly like Cmd. stderr still streams (to Out or os.Stderr). In
-// dry-run it records and returns "" with a nil error. Use this for the rare
-// state-querying command whose output a stage needs, rather than dropping to
-// os/exec directly (which would bypass dry-run and the recorded plan).
-func (r *Runner) Capture(name string, args ...string) (string, error) {
-	line := strings.TrimSpace(name + " " + strings.Join(args, " "))
-	r.record(line)
-	ui.Step("%s", line)
-	if r.DryRun {
-		return "", nil
-	}
-	cmd := exec.Command(name, args...)
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr, cmd.Stdin = &out, r.outWriter(os.Stderr), os.Stdin
-	r.prepare(cmd)
-	if err := cmd.Run(); err != nil {
-		return out.String(), fmt.Errorf("%s: %w", name, err)
-	}
-	return out.String(), nil
 }
 
 // Root runs a command with root privileges: directly when already root (Phase A,
@@ -109,10 +72,42 @@ func (r *Runner) Root(name string, args ...string) error {
 	return r.Cmd(name, args...)
 }
 
+// RootShell runs a shell script with root privileges through `bash -c`: via
+// `sudo bash -c <script>` when not already root (Phase B, as the user) or
+// directly when already root (Phase A, live ISO). This lets a shell pipeline
+// run wholly as root without inner per-command `sudo`. It records/prints the
+// same `sh: <script>` line as Shell so the recorded .Plan stays uniform.
+func (r *Runner) RootShell(script string) error {
+	r.record("sh: " + script)
+	ui.Step("sh: %s", script)
+	if r.DryRun {
+		return nil
+	}
+	var cmd *exec.Cmd
+	if r.Sudo {
+		cmd = exec.Command("sudo", "bash", "-c", script)
+	} else {
+		cmd = exec.Command("bash", "-c", script)
+	}
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
+	r.prepare(cmd)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("shell: %w", err)
+	}
+	return nil
+}
+
 // Try runs a command but never fails the stage (the analogue of bash `|| true`),
 // for best-effort steps like partprobe/udevadm.
 func (r *Runner) Try(name string, args ...string) {
 	_ = r.Cmd(name, args...)
+}
+
+// TryRoot is the Root analogue of Try: a best-effort privileged command that
+// never fails the stage. It adds sudo in Phase B and runs direct in Phase A,
+// keyed off Sudo, exactly like Root.
+func (r *Runner) TryRoot(name string, args ...string) {
+	_ = r.Root(name, args...)
 }
 
 // Shell runs a string through `bash -c`, for pipes/redirects/conditionals
@@ -124,7 +119,7 @@ func (r *Runner) Shell(script string) error {
 		return nil
 	}
 	cmd := exec.Command("bash", "-c", script)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin = r.outWriter(os.Stdout), r.outWriter(os.Stderr), os.Stdin
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
 	r.prepare(cmd)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("shell: %w", err)
