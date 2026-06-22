@@ -369,6 +369,13 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
+// ExpandEnvNode applies the exact same value-only env substitution used by Load
+// to a parsed YAML node tree. It exists so internal/configsrc can expand each
+// merge layer with identical semantics ($$->$, unset-var errors, keys and
+// comments untouched) without duplicating the logic. It is a thin wrapper over
+// the unexported expandEnv; keep them in lockstep.
+func ExpandEnvNode(n *yaml.Node) error { return expandEnv(n) }
+
 // expandEnv substitutes ${VAR}/$VAR references in the config's scalar VALUES
 // with the process environment, so secrets and per-machine values can stay out
 // of the (gitignored) file. It walks the parsed YAML node tree and expands only
