@@ -8,6 +8,19 @@
 # variable is an error, and a doubled dollar sign is a literal one). Only values
 # are expanded — keys and comments are left untouched, so a literal `$` in a
 # comment is fine. Keeps secrets and per-machine values out of the file.
+#
+# --- imports (optional) -----------------------------------------------------
+# Pull in and merge other configs underneath this one, so a machine-specific
+# file stays tiny on top of a shared base. Each entry is a local path (resolved
+# next to THIS file), a github shorthand (pin it with @ref), or a raw URL.
+# Imports merge base-first, importer-wins: keys set here override imported ones,
+# and later imports override earlier. See the README for the full merge rules
+# and `archwright render` (resolve + merge to a single flat file). Omit for a
+# plain standalone config like the rest of this example.
+# imports:
+#   - archwright.base.yaml                                  # sibling, same dir/repo
+#   - github.com/AdamJHall/dotfiles/archwright.kde.yaml@v1  # pinned to a ref
+#   - https://example.com/teams/shared.yaml                 # raw URL
 
 system:
   hostname: arch-box
