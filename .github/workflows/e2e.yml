@@ -1,4 +1,4 @@
-# End-to-end testing, tiered by cost/fidelity (see CLAUDE.md "Testing").
+# End-to-end testing, tiered by cost/fidelity.
 #
 # Tier 1 (this file) — render matrix: no VM, no privileges. For each config
 # fixture it builds the binary, validates the config, runs the real install CLI

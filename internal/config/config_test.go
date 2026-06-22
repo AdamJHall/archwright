@@ -59,7 +59,7 @@ grub:
     name: tela
 kde:
   look_and_feel: org.kde.breezedark.desktop
-chezmoi:
+dotfiles:
   repo: https://github.com/AdamJHall/dotfiles
 setup:
   steps:
@@ -91,15 +91,15 @@ func TestLoad_EnvSubstitution(t *testing.T) {
 	t.Run("substitutes ${VAR} and $VAR", func(t *testing.T) {
 		t.Setenv("AW_USER", "adam")
 		t.Setenv("AW_REPO", "https://example.com/dotfiles")
-		cfg, err := Load(write(t, "user:\n  name: ${AW_USER}\nchezmoi:\n  repo: $AW_REPO\n"))
+		cfg, err := Load(write(t, "user:\n  name: ${AW_USER}\ndotfiles:\n  repo: $AW_REPO\n"))
 		if err != nil {
 			t.Fatalf("Load: %v", err)
 		}
 		if cfg.User.Name != "adam" {
 			t.Errorf("user.name = %q, want adam", cfg.User.Name)
 		}
-		if cfg.Chezmoi.Repo != "https://example.com/dotfiles" {
-			t.Errorf("chezmoi.repo = %q", cfg.Chezmoi.Repo)
+		if cfg.Dotfiles.Repo != "https://example.com/dotfiles" {
+			t.Errorf("dotfiles.repo = %q", cfg.Dotfiles.Repo)
 		}
 	})
 
@@ -231,13 +231,6 @@ func TestValidate_Errors(t *testing.T) {
 				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
 				"pacstrap: []", 1),
 			want: []string{"pacstrap must have at least 1 item(s)"},
-		},
-		{
-			name: "deprecated pacstrap_extra key errors",
-			yaml: strings.Replace(validYAML,
-				"pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]",
-				"pacstrap: [base]\npacstrap_extra: [intel-ucode]", 1),
-			want: []string{"pacstrap_extra has been removed", "rename it to `pacstrap`"},
 		},
 		{
 			name: "bad reflector sort",

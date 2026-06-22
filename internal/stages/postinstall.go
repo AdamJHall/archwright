@@ -116,8 +116,7 @@ func installKernels(ctx *Context, k config.KernelConfig) error {
 }
 
 // installKernelsGrub sets the GRUB default kernel (GRUB_TOP_LEVEL) and regenerates
-// grub.cfg so the new entries (and default) take effect on first boot. This is the
-// historical behaviour and stays byte-identical to before.
+// grub.cfg so the new entries (and default) take effect on first boot.
 func installKernelsGrub(ctx *Context, k config.KernelConfig) error {
 	if k.Default != "" {
 		// GRUB_TOP_LEVEL pins a specific kernel image as the default menu entry.

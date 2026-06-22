@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// bootloaderYAML is a minimal lvm config (the historical default layout) used to
+// bootloaderYAML is a minimal lvm config (the default layout) used to
 // exercise the bootloader mapping in Build. The bootloader block is appended by
 // the test so both kinds reuse the same base.
 const bootloaderBaseYAML = `
