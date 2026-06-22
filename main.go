@@ -122,7 +122,7 @@ func main() {
 		Short: "Parse and validate config.yaml without changing anything",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			refs := configRefs(flagConfig)
-			cfg, _, err := configsrc.Load(refs, loadOpts())
+			cfg, _, _, err := configsrc.Load(refs, loadOpts())
 			if err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ func main() {
 // happens before any bytes are written so an invalid merged config errors out
 // rather than emitting a bad file. Factored out so it is testable without cobra.
 func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
-	cfg, flat, err := configsrc.Load(refs, opts)
+	cfg, flat, _, err := configsrc.Load(refs, opts)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
 
 func runPhase(p stages.Phase) error {
 	refs := configRefs(flagConfig)
-	cfg, flat, err := configsrc.Load(refs, loadOpts())
+	cfg, flat, _, err := configsrc.Load(refs, loadOpts())
 	if err != nil {
 		return err
 	}
