@@ -1,0 +1,6 @@
+# Tooling for archwright development. `mise install` provisions everything;
+# `mise run <task>` (or `task <task>`) drives the workflow. Go stays the build
+# tool — these wrap it plus the root-only loopback/QEMU integration harness.
+[tools]
+go = "1.26"
+task = "latest"

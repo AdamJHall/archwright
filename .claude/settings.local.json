@@ -28,7 +28,10 @@
       "Bash(git push *)",
       "Bash(gh run *)",
       "Bash(python3 -c ' *)",
-      "Bash(bash -n test/vm.sh)"
+      "Bash(bash -n test/vm.sh)",
+      "Bash(git worktree *)",
+      "Bash(git --no-pager diff --stat)",
+      "Bash(python3 -c \"import yaml,sys; yaml.safe_load\\(open\\('config.example.yaml'\\)\\); print\\('config.example.yaml: YAML OK'\\)\")"
     ]
   }
 }
