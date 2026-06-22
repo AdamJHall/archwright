@@ -183,7 +183,7 @@ func main() {
 // happens before any bytes are written so an invalid merged config errors out
 // rather than emitting a bad file. Factored out so it is testable without cobra.
 func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
-	cfg, flat, _, err := configsrc.Load(refs, opts)
+	cfg, flat, srcs, err := configsrc.Load(refs, opts)
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,11 @@ func renderConfig(refs []string, out io.Writer, opts configsrc.Options) error {
 	}
 	if err := stages.ValidateHooks(cfg); err != nil {
 		return err
+	}
+	if header := configsrc.ProvenanceComment(srcs); header != "" {
+		if _, err := io.WriteString(out, header); err != nil {
+			return err
+		}
 	}
 	_, err = out.Write(flat)
 	return err
