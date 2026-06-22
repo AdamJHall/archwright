@@ -40,17 +40,19 @@ Or grab a prebuilt binary from a GitHub release (see [Releases](#releases)).
 ## Commands
 
 ```
-archwright install   [--dry-run] [--only <stage>] [--config <file>] [--yes]
-archwright bootstrap [--dry-run] [--only <stage>] [--config <file>]
-archwright validate  [--config <file>]
+archwright install   [--dry-run] [--only <stage>] [--config <ref>]... [--yes]
+archwright bootstrap [--dry-run] [--only <stage>] [--config <ref>]...
+archwright validate  [--config <ref>]...
+archwright render    [--config <ref>]... -o <out.yaml>
 archwright --version
 ```
 
 | Command     | Phase | Run as | What it does |
 |-------------|-------|--------|--------------|
-| `install`   | A     | root, from the Arch live ISO | (optional) pick mirrors with reflector; probe disk geometry; render an archinstall config (disk 1 = ESP+swap+LVM-PV partitions; extra disks = full-disk PVs; one VG→XFS root LV) + credentials; run `archinstall --silent`; then in the target chroot configure custom repos (e.g. CachyOS) + install custom kernels (replace stock, set GRUB default) and stage the binary+config for Phase B |
+| `install`   | A     | root, from the Arch live ISO | (optional) pick mirrors with reflector; probe disk geometry; render an archinstall config (disk 1 = ESP+swap+LVM-PV partitions; extra disks = full-disk PVs; one VG→XFS root LV) + credentials; run `archinstall --silent`; then in the target chroot configure custom repos (e.g. CachyOS) + install custom kernels (replace stock, set GRUB default) and stage the binary+**flattened config** for Phase B |
 | `bootstrap` | B     | your user, after reboot | yay, packages, flatpaks, AUR, Plymouth, GRUB theme, KDE customization, `chezmoi init --apply`, then post-dotfiles `setup` (idempotent git clones + commands) |
-| `validate`  | —     | anyone | parse + validate `config.yaml`, change nothing |
+| `validate`  | —     | anyone | resolve + merge + validate the config, change nothing |
+| `render`    | —     | anyone | resolve `--config` refs, merge their `imports:`, write the single flattened config to `-o`, change nothing — see [Remote & layered configuration](#remote--layered-configuration) |
 
 ### Flags
 
@@ -58,7 +60,9 @@ archwright --version
 |------|--------|
 | `--dry-run` | print every command instead of running it (records a full plan; runs nothing) |
 | `--only <stage>` | run one stage by name or number (`--only 10`, `--only grub`) |
-| `--config <file>` | config path (default `config.yaml`) |
+| `--config <ref>` | config reference (default `config.yaml`); **repeatable** — later refs override earlier (last wins). A ref is a local path, a `github.com/OWNER/REPO/path.yaml[@ref]` shorthand, or a raw URL (see [Remote & layered configuration](#remote--layered-configuration)) |
+| `-o <file>` | (`render` only) where to write the flattened config |
+| `--offline` | resolve remote refs from the local cache only (no network) |
 | `--yes` | (`install` only) skip the destructive `ERASE` confirm + set a throwaway password — VMs only |
 
 ## Workflow
@@ -95,6 +99,110 @@ disks.esp.device must start with "/dev/"
 disks.lvm.filesystem must be one of: xfs ext4
 disks.lvm.pvs must have at least 1 item(s)
 ```
+
+## Remote & layered configuration
+
+`--config` doesn't have to be a single local file. It can point at a config that lives in
+a git repo or at a URL, and that config can pull in and **merge** other configs — so a
+machine-specific config stays tiny and sits on top of a shared base.
+
+```sh
+archwright install --config github.com/AdamJHall/dotfiles/archwright.desktop.yaml@v1
+```
+
+### Reference forms
+
+A `--config` value (and each `imports:` entry) is one of three forms, told apart by shape:
+
+| Form | Example | Resolves to |
+|------|---------|-------------|
+| local path | `config.yaml`, `./desktop.yaml` | filesystem read (today's behaviour) |
+| github shorthand | `github.com/OWNER/REPO/path/to.yaml[@ref]` | `raw.githubusercontent.com/OWNER/REPO/<ref-or-default>/path/to.yaml` |
+| raw URL | `https://…/file.yaml` | HTTP GET |
+
+### The `imports:` key
+
+A config may carry a top-level `imports:` list naming other configs to merge in *underneath*
+it:
+
+```yaml
+# archwright.desktop.yaml  (the entry point: desktop-specific)
+imports:
+  - archwright.base.yaml                                  # sibling, resolved next to THIS file
+  - github.com/AdamJHall/dotfiles/archwright.kde.yaml@v1  # another file / repo, pinned
+  - https://example.com/teams/shared.yaml                 # raw URL
+
+system:
+  hostname: desktop-box        # overrides whatever base set
+packages:
+  - steam                      # added on top of base's packages
+```
+
+A **bare relative path** inside `imports:` resolves against the **importing file's
+location**, not your CWD — so a sibling in the same repo is just `archwright.base.yaml`, and
+a github-rooted entry point makes its relative imports github-rooted too. `imports:` is
+consumed by the resolver and stripped before validation; it is not a config field.
+
+### Merge precedence
+
+Layering is **base-first, importer-wins**, applied recursively:
+
+1. An imported file is resolved and merged *before* the file that imports it.
+2. Among multiple `imports:`, **later entries override earlier** ones.
+3. The importing file's own top-level keys override everything it imported.
+4. Imports are processed depth-first; an imported file may itself have `imports:`.
+
+So for the example above, effective precedence (low → high) is:
+`base.yaml` → `kde.yaml` → `shared.yaml` → `desktop.yaml`. Repeated `--config a --config b`
+on the command line is the same merge applied to CLI layers — `b` wins over `a`.
+
+### List fields
+
+Maps merge recursively. Lists are merged per-field by what makes sense for that field:
+
+| Field shape | Strategy | Examples |
+|-------------|----------|----------|
+| plain string lists | **union + dedup** | `packages`, `flatpaks`, `aur`, `system.locales`, `user.groups` |
+| name-keyed structured lists | **merge by `name`** (a later layer overrides one entry) | `repos`, `hooks`, `flatpak_remotes` |
+| identity/layout lists | **replace** | `disks.lvm.pvs`, `disks.btrfs.subvolumes` |
+
+For the rare case where you want to drop everything inherited for one field, the `!replace`
+tag is the escape hatch:
+
+```yaml
+packages: !replace [vim, git]   # ignore inherited packages, use exactly this
+```
+
+### `render` — resolve & merge, change nothing
+
+```sh
+archwright render --config github.com/AdamJHall/dotfiles/archwright.desktop.yaml@v1 \
+  -o config.flat.yaml
+```
+
+`render` resolves every ref, expands `${VAR}` substitutions, merges all `imports:` and
+repeated `--config` layers, and writes the single flattened config (no `imports:`) to `-o`.
+It runs no stages and touches no disks — it's the way to preview exactly what a layered
+config flattens to, and doubles as the debugging tool for the merge engine.
+
+Phase A resolves and merges **once**, then stages the *flattened* config into the target for
+Phase B. Phase B reads a plain local file — no network, no re-fetch — and is guaranteed to
+see byte-identical config to Phase A.
+
+### Trust, pinning & caching
+
+Fetching config that drives **destructive disk operations and arbitrary hook commands** from
+a URL is a real trust boundary — treat it like one:
+
+- **Pin a ref.** Use `@<tag-or-sha>` on github shorthands; an unpinned `main` warns (and
+  refuses under `--strict`). Phase A prints the resolved source list + merged result before
+  the `ERASE` confirm, so you see exactly what you're about to run.
+- **`--offline` uses the cache only.** Fetched files are cached under
+  `$XDG_CACHE_HOME/archwright/` keyed by URL+ref — handy when re-running on a flaky live-ISO
+  network.
+- **Private repos.** Set `GITHUB_TOKEN` and it's sent as the `Authorization` header for
+  github/raw fetches. Keep tokens in the environment, never in the config file (the `${VAR}`
+  substitution already reads them).
 
 ## Architecture
 
