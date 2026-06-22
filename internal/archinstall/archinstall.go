@@ -575,22 +575,51 @@ type plainBuilder struct {
 }
 
 func (b *plainBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
-	disk1 := b.esp.Device
-	espBytes := b.espBytes
+	rootFs := b.plain.Filesystem
+	devices, err := singleDiskRoot(b.esp, b.swap, b.espBytes, geom, rootSpec{
+		fsType:       rootFs,
+		mountOptions: []string{},
+		btrfs:        []any{},
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return devices, nil, nil
+}
+
+// rootSpec describes the per-layout root partition that follows the shared ESP +
+// optional swap prefix on disk 1. Only these three fields differ between the
+// plain and btrfs layouts; everything else (Status/Type/Start/Size/Mountpoint at
+// "/"/Flags) is identical and supplied by singleDiskRoot.
+type rootSpec struct {
+	fsType       string
+	mountOptions []string
+	btrfs        []any
+}
+
+// singleDiskRoot builds the disk-1 layout shared by the plain and btrfs builders:
+// the ESP partition, an optional linux-swap partition (when swap.type is
+// "partition", sized from swap.size), and a root partition consuming the rest of
+// disk 1. The root partition's fs_type, mount options and btrfs subvolume list
+// come from spec; everything else is fixed. The newObjID() call order is ESP,
+// swap (if present), then root — matching both original builders so golden renders
+// stay byte-identical.
+func singleDiskRoot(esp config.ESPConfig, swap config.SwapConfig, espBytes uint64, geom Geometry, spec rootSpec) ([]Device, error) {
+	disk1 := esp.Device
 
 	disk1Total, ok := geom[disk1]
 	if !ok || disk1Total == 0 {
-		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
+		return nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
 	}
 
 	parts := []Partition{espPartition(espBytes)}
 	offset := startOffset + espBytes
 
 	// Optional swap partition (plain/btrfs only). Sized from swap.size.
-	if b.swap.EffectiveType() == "partition" {
-		swapBytes, err := parseSize(b.swap.Size)
+	if swap.EffectiveType() == "partition" {
+		swapBytes, err := parseSize(swap.Size)
 		if err != nil {
-			return nil, nil, fmt.Errorf("swap size: %w", err)
+			return nil, fmt.Errorf("swap size: %w", err)
 		}
 		swapFs := "linux-swap"
 		parts = append(parts, Partition{
@@ -603,20 +632,20 @@ func (b *plainBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error)
 
 	used := offset + endReserve
 	if disk1Total <= used {
-		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
+		return nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
 	}
 	rootBytes := roundDownMiB(disk1Total - used)
 
 	root := "/"
-	rootFs := b.plain.Filesystem
+	rootFs := spec.fsType
 	parts = append(parts, Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(offset), Size: bytes(rootBytes),
 		FsType: &rootFs, Mountpoint: &root,
-		MountOptions: []string{}, Flags: []string{}, Btrfs: []any{},
+		MountOptions: spec.mountOptions, Flags: []string{}, Btrfs: spec.btrfs,
 	})
 
-	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil, nil
+	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil
 }
 
 // --- btrfs layout -----------------------------------------------------------
@@ -642,39 +671,6 @@ type btrfsBuilder struct {
 }
 
 func (b *btrfsBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
-	disk1 := b.esp.Device
-	espBytes := b.espBytes
-
-	disk1Total, ok := geom[disk1]
-	if !ok || disk1Total == 0 {
-		return nil, nil, fmt.Errorf("no geometry for disk 1 (%s)", disk1)
-	}
-
-	parts := []Partition{espPartition(espBytes)}
-	offset := startOffset + espBytes
-
-	if b.swap.EffectiveType() == "partition" {
-		swapBytes, err := parseSize(b.swap.Size)
-		if err != nil {
-			return nil, nil, fmt.Errorf("swap size: %w", err)
-		}
-		swapFs := "linux-swap"
-		parts = append(parts, Partition{
-			ObjID: newObjID(), Status: "create", Type: "primary",
-			Start: bytes(offset), Size: bytes(swapBytes),
-			FsType: &swapFs, MountOptions: []string{}, Flags: []string{"swap"}, Btrfs: []any{},
-		})
-		offset += swapBytes
-	}
-
-	used := offset + endReserve
-	if disk1Total <= used {
-		return nil, nil, fmt.Errorf("disk 1 (%s, %d bytes) too small for ESP+swap (%d bytes)", disk1, disk1Total, used)
-	}
-	rootBytes := roundDownMiB(disk1Total - used)
-
-	root := "/"
-	btrfsFs := "btrfs"
 	mountOpts := []string{}
 	if b.btrfs.Compress != "" {
 		mountOpts = append(mountOpts, "compress="+b.btrfs.Compress)
@@ -687,14 +683,15 @@ func (b *btrfsBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error)
 		subvols = append(subvols, BtrfsSubvolume{Name: sv.Name, Mountpoint: &mp})
 	}
 
-	parts = append(parts, Partition{
-		ObjID: newObjID(), Status: "create", Type: "primary",
-		Start: bytes(offset), Size: bytes(rootBytes),
-		FsType: &btrfsFs, Mountpoint: &root,
-		MountOptions: mountOpts, Flags: []string{}, Btrfs: subvols,
+	devices, err := singleDiskRoot(b.esp, b.swap, b.espBytes, geom, rootSpec{
+		fsType:       "btrfs",
+		mountOptions: mountOpts,
+		btrfs:        subvols,
 	})
-
-	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil, nil
+	if err != nil {
+		return nil, nil, err
+	}
+	return devices, nil, nil
 }
 
 // --- helpers ----------------------------------------------------------------
