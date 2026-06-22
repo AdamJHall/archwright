@@ -1,0 +1,57 @@
+# Convenience targets. The Go workflow stays `go build/test/vet`; these wrap the
+# Tier 2 loopback integration harness, which needs root (losetup/lvm/archinstall).
+#
+# Tooling is managed by mise (see mise.toml): `mise install` provisions Go + task,
+# then `task <name>` or `mise run <name>` drives the workflow.
+version: '3'
+
+vars:
+  # e2e disk-layout knobs, overridable on the CLI:
+  #   task e2e-disks-light LAYOUT=single-disk-lvm FS=ext4
+  LAYOUT: '{{.LAYOUT | default "multi-disk-lvm"}}'
+  FS: '{{.FS | default "xfs"}}'
+
+tasks:
+  build:
+    desc: Build the archwright binary.
+    cmds:
+      - go build -o archwright .
+
+  test:
+    desc: Run unit tests (validation table + per-stage command plans).
+    cmds:
+      - go test ./...
+
+  vet:
+    desc: Run go vet.
+    cmds:
+      - go vet ./...
+
+  e2e-disks-light:
+    desc: >-
+      Validate archwright's rendered archinstall JSON against a real archinstall
+      (--dry-run) on loop devices. No install, no network.
+    cmds:
+      - sudo bash test/e2e/disks.sh --mode light --layout {{.LAYOUT}} --fs {{.FS}}
+
+  e2e-disks-full:
+    desc: >-
+      Real partition/format/pacstrap onto loop devices, then assert layout.
+      Slow; needs network + disk space.
+    cmds:
+      - sudo bash test/e2e/disks.sh --mode full --layout {{.LAYOUT}} --fs {{.FS}} --disk1-size 12G --extra-size 6G
+
+  vm:
+    desc: Interactive QEMU smoke test — boot the Arch live ISO (run Phase A).
+    cmds:
+      - bash test/vm.sh iso
+
+  vm-fresh:
+    desc: Boot the Arch live ISO, wiping the virtual disks first.
+    cmds:
+      - bash test/vm.sh iso --fresh
+
+  vm-disk:
+    desc: Boot the installed system off disk 1.
+    cmds:
+      - bash test/vm.sh disk

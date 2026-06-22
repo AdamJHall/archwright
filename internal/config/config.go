@@ -110,6 +110,11 @@ type Config struct {
 
 	Setup SetupConfig `yaml:"setup"`
 
+	// Services lists systemd units to enable in Phase B so they start on the next
+	// boot (e.g. a display-manager unit like plasmalogin.service). Enabling is
+	// idempotent, so the stage is safe to re-run. Unset = no services touched.
+	Services ServicesConfig `yaml:"services"`
+
 	Hooks []Hook `yaml:"hooks" validate:"dive"`
 
 	// Bootloader selects which bootloader Phase A installs and Phase B configures.
@@ -268,6 +273,17 @@ type Clone struct {
 	Dest   string `yaml:"dest"   validate:"required"`
 	Ref    string `yaml:"ref"`
 	Update bool   `yaml:"update"`
+}
+
+// ServicesConfig drives the Phase B 90-services stage, which runs last (after
+// dotfiles + setup) and `systemctl enable`s the listed units so they start on
+// the next boot. Enable holds system units (enabled as root); User holds
+// per-user units (enabled with `systemctl --user`, unprivileged). Both default
+// to empty, so an unset block touches no services. The trailing ".service" is
+// optional — systemctl accepts a bare unit name.
+type ServicesConfig struct {
+	Enable []string `yaml:"enable"` // system units: systemctl enable <unit>...
+	User   []string `yaml:"user"`   // user units: systemctl --user enable <unit>...
 }
 
 // Hook is a user-defined command run at a named lifecycle point. Exactly one of

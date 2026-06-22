@@ -27,12 +27,12 @@ func TestWithin(t *testing.T) {
 		{
 			name: "from only by name is inclusive lower bound",
 			from: "flatpak", to: "",
-			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup"},
+			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup", "services"},
 		},
 		{
 			name: "from only by number resolves same as name",
 			from: "30", to: "",
-			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup"},
+			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup", "services"},
 		},
 		{
 			name: "to only by name is inclusive upper bound",
