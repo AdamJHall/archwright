@@ -141,13 +141,16 @@ type LvmConfiguration struct {
 // DiskEncryption mirrors archinstall's DiskEncryption.json(). encryption_type is
 // "luks" (encrypt the single root partition) or "lvm_on_luks" (encrypt the PV
 // partitions under LVM). partitions holds the encrypted partition obj_ids (the
-// root partition for luks, the PV partitions for lvm_on_luks); lvm_volumes holds
-// LV obj_ids for the luks_on_lvm variant. The password is supplied separately as
-// the top-level encryption_password field.
+// root partition for luks, the PV partitions for lvm_on_luks). The password is
+// supplied separately as the top-level encryption_password field.
 type DiskEncryption struct {
 	EncryptionType string   `json:"encryption_type"` // "luks"/"lvm_on_luks"
 	Partitions     []string `json:"partitions"`
-	LvmVolumes     []string `json:"lvm_volumes"`
+	// LvmVolumes carries LV obj_ids for a per-LV (luks-on-lvm) encryption
+	// topology. That topology is reserved/unused for now — no encryption_type
+	// currently populates it — so it always renders as an empty list. Kept on
+	// the struct so the JSON shape matches archinstall's DiskEncryption.json().
+	LvmVolumes []string `json:"lvm_volumes"`
 }
 
 // DiskConfig mirrors DiskLayoutConfiguration.json(). disk_encryption is nested
@@ -333,14 +336,16 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 // and lvm config. For lvm_on_luks the encrypted partitions are exactly the VG's
 // LvmPvs; for luks it is the single partition mounted at "/". archinstall rejects
 // LVM encryption with more than two PV partitions (device_handler.py) — this is
-// guarded here as well as in config validation.
+// guarded here as well as in config validation. Only "luks" and "lvm_on_luks"
+// are accepted (config validation restricts the set); a per-LV luks-on-lvm
+// topology is not implemented.
 //
-// VM-validation-pending: the encryption_type values, the partitions/lvm_volumes
-// obj_id wiring, and the 2-PV limit are reverse-engineered from archinstall source
-// and must be confirmed against a real archinstall run in a VM.
+// VM-validation-pending: the encryption_type values, the partitions obj_id
+// wiring, and the 2-PV limit are reverse-engineered from archinstall source and
+// must be confirmed against a real archinstall run in a VM.
 func buildEncryption(encType string, devices []Device, lvm *LvmConfiguration) (*DiskEncryption, error) {
 	switch encType {
-	case "lvm_on_luks", "luks_on_lvm":
+	case "lvm_on_luks":
 		if lvm == nil || len(lvm.VolGroups) == 0 {
 			return nil, fmt.Errorf("%s encryption requires an lvm layout", encType)
 		}

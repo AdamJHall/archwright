@@ -108,6 +108,14 @@ func mergeMaps(base, over map[string]any) (map[string]any, error) {
 
 // mergeSlices applies the slice strategy: union+dedup for string slices,
 // key-merge-by-name for slices of maps that carry a "name", replace otherwise.
+//
+// Sharp edge: the merge-by-name path applies ONLY when every element of BOTH
+// slices carries a non-empty "name" (see structuredByName). If even one element
+// in either layer lacks a name, the whole slice is replaced wholesale instead of
+// merged — so a single nameless element in an overriding layer silently drops the
+// base's elements. This is why structured-list schema fields whose lists are
+// meant to merge across layers (e.g. config Hooks) must make "name" required, so
+// a nameless element fails validation rather than degrading the merge.
 func mergeSlices(base, over []any) (any, error) {
 	if allStrings(base) && allStrings(over) {
 		return unionStrings(base, over), nil
@@ -146,7 +154,10 @@ func unionStrings(base, over []any) []any {
 }
 
 // structuredByName reports whether s is a non-empty slice whose every element is
-// a map carrying a non-empty string "name" key.
+// a map carrying a non-empty string "name" key. It is the gate for merge-by-name:
+// merge-by-name applies only when this holds for BOTH the base and the over
+// slice. A single nameless element makes this return false, which (in mergeSlices)
+// downgrades the merge to a wholesale replace — see the mergeSlices doc comment.
 func structuredByName(s []any) bool {
 	if len(s) == 0 {
 		return false

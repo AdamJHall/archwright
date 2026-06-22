@@ -229,10 +229,16 @@ type Subvol struct {
 	Mountpoint string `yaml:"mountpoint" validate:"required"`
 }
 
-// Encryption enables LUKS. Type: "luks" (encrypt the single root partition,
-// for plain/btrfs) or "lvm_on_luks" (encrypt the PV partitions under LVM).
+// Encryption enables LUKS. Type is one of:
+//   - "luks": encrypt the single root partition (for the plain/btrfs layouts).
+//   - "lvm_on_luks": encrypt the PV partitions under LVM (for the lvm layout).
+//
+// The "luks_on_lvm" topology (encrypt individual LVs on top of an unencrypted
+// VG) is intentionally NOT accepted: it is unimplemented in the archinstall
+// renderer, so allowing it would silently produce the wrong (lvm_on_luks)
+// layout. Rejecting it here surfaces a clear validation error instead.
 type Encryption struct {
-	Type string `yaml:"type" validate:"required,oneof=luks lvm_on_luks luks_on_lvm"`
+	Type string `yaml:"type" validate:"required,oneof=luks lvm_on_luks"`
 }
 
 // SetupConfig drives the Phase B 85-setup stage, which runs after chezmoi has
@@ -269,8 +275,12 @@ type Clone struct {
 // Script and Dir have a leading `~` expanded to the user's home at run time.
 // Script existence is NOT checked at validate time: a hook script may be
 // produced by an earlier hook or stage in the same run.
+//
+// Name is required: it identifies the hook for layered-config merge-by-name (a
+// nameless element would silently flip the whole hooks slice from merge to
+// wholesale replace — see internal/configsrc/merge.go) and for diagnostics.
 type Hook struct {
-	Name   string            `yaml:"name"`
+	Name   string            `yaml:"name"   validate:"required"`
 	At     string            `yaml:"at"     validate:"required,hookpoint"`
 	Run    string            `yaml:"run"    validate:"required_without=Script"`
 	Script string            `yaml:"script" validate:"omitempty"`
@@ -509,7 +519,7 @@ func (c *Config) encryptionErrors() []error {
 	}
 	layout := d.EffectiveLayout()
 	switch d.Encryption.Type {
-	case "lvm_on_luks", "luks_on_lvm":
+	case "lvm_on_luks":
 		if layout != "lvm" {
 			errs = append(errs, fmt.Errorf("disks.encryption.type %s requires the lvm layout", d.Encryption.Type))
 		}
