@@ -94,9 +94,14 @@ func configureLocales(ctx *Context, locales []string) error {
 // "make this kernel the default + regenerate boot config" tail differs per
 // bootloader, branched off the configured bootloader (defaulting to grub).
 func installKernels(ctx *Context, k config.KernelConfig) error {
-	args := append([]string{"-S", "--needed", "--noconfirm"}, k.Packages...)
-	if err := chrootCmd(ctx, "pacman", args...); err != nil {
-		return err
+	// Skip the pacman install when there are no extra kernel packages (Issue #3):
+	// postInstall now also calls this purely to pin a base kernel as the default,
+	// and `pacman -S` with zero package arguments would error.
+	if len(k.Packages) > 0 {
+		args := append([]string{"-S", "--needed", "--noconfirm"}, k.Packages...)
+		if err := chrootCmd(ctx, "pacman", args...); err != nil {
+			return err
+		}
 	}
 	if k.ReplaceStock {
 		// Validated to be safe: at least one replacement kernel is installed above.

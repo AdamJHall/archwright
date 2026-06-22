@@ -103,14 +103,39 @@ func (archinstallStage) Run(ctx *Context) error {
 // remount the root LV and the ESP (kernels/GRUB live on /boot) for the chroot
 // work, then unmount.
 func postInstall(ctx *Context) error {
+	// Encrypted layouts (Issue #2): rootDevice() returns the *plaintext* device
+	// (the bare partition or /dev/VG/LV), but after archinstall provisions LUKS the
+	// real root filesystem lives behind a /dev/mapper/* device that requires a LUKS
+	// remount (cryptsetup open with the passphrase) we have NOT implemented yet —
+	// encryption is VM-validation-pending. Mounting the still-encrypted device and
+	// running chroot work against it would either fail or, worse, silently no-op.
+	//
+	// Conservative behaviour until the LUKS remount is implemented and VM-validated:
+	// skip the remount and every chroot-dependent post-install step (swapfile,
+	// locales, repos, kernels). We also cannot stage the Phase B binary/config,
+	// because staging copies into /mnt/home/<user> which requires the (correctly
+	// mapped+mounted) root — so we warn that Phase B staging must be done manually.
+	// This keeps the encrypted path coherent and loud rather than silently wrong.
+	if ctx.Cfg.Disks.Encryption != nil {
+		ui.Warn("encrypted install: custom repos, kernels, locale extras, and swapfile are NOT applied yet (LUKS remount not implemented)")
+		ui.Warn("encrypted install: Phase B binary/config staging is SKIPPED — after first boot, copy the archwright binary + config.yaml into your home and run bootstrap manually")
+		return nil
+	}
+
 	rootDev, err := rootDevice(ctx.Cfg)
 	if err != nil {
 		return err
 	}
 	esp := partDev(ctx.Cfg.Disks.ESP.Device, 1)
 
-	ctx.R.Try("mount", rootDev, "/mnt")
-	ctx.R.Try("mount", esp, "/mnt/boot")
+	// Checked mounts (Issue #2): a failed remount must abort, not silently run the
+	// chroot steps against an empty /mnt. (The umounts below stay best-effort.)
+	if err := ctx.R.Root("mount", rootDev, "/mnt"); err != nil {
+		return err
+	}
+	if err := ctx.R.Root("mount", esp, "/mnt/boot"); err != nil {
+		return err
+	}
 
 	if err := setupSwapfile(ctx); err != nil {
 		return err
@@ -127,7 +152,10 @@ func postInstall(ctx *Context) error {
 			return err
 		}
 	}
-	if len(ctx.Cfg.Kernel.Packages) > 0 {
+	// Run installKernels when there are extra kernel packages to install OR a
+	// default kernel to pin (Issue #3): kernel.default may name a base kernel with
+	// no extra packages, and that default must still be written to the bootloader.
+	if len(ctx.Cfg.Kernel.Packages) > 0 || ctx.Cfg.Kernel.Default != "" {
 		if err := installKernels(ctx, ctx.Cfg.Kernel); err != nil {
 			return err
 		}
@@ -273,6 +301,11 @@ func probeGeometry(devs []string, dryRun bool) (archinstall.Geometry, error) {
 		out, err := exec.Command("blockdev", "--getsize64", dev).Output()
 		if err != nil {
 			if dryRun {
+				// Absent device under dry-run: fall back to a representative size so
+				// the rendered plan is still meaningful, but warn loudly (Issue #11)
+				// — silence here masks a typo'd device path, making the placeholder
+				// look like a successful probe.
+				ui.Warn("device not present; using 512 GiB placeholder size (dry-run)", "device", dev)
 				geom[dev] = 512 * (1 << 30) // 512 GiB placeholder
 				continue
 			}
