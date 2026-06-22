@@ -434,10 +434,10 @@ repeatable; a new `render` command writes the flattened merge; Phase A resolves 
 stages the flattened bytes (`Context.FlatConfig`) so Phase B never re-fetches. See the Wave 5
 retrospective below.
 
-**Next wave starts here:** the headline extensibility roadmap is now fully landed — what
-remains is the **e2e/VM validation** work ([[e2e-testing-plan]]) and the optional polish noted
-in the retrospectives (trust/pinning UX warnings, `render` provenance comment).
-Everything new since Wave 1 carries **VM-validation caveats** — confirm the
+**Next wave starts here:** the headline extensibility roadmap is fully landed, and **Wave 6
+landed the Wave 5 trust/pinning UX + `render` provenance polish** (see the Wave 6 retrospective
+below). What remains is the **e2e/VM validation** work ([[e2e-testing-plan]]) — the last open
+item. Everything new since Wave 1 carries **VM-validation caveats** — confirm the
 reverse-engineered shapes against a real archinstall 4.3 run before trusting on hardware:
 the Wave 2 `bootloader_config`/btrfs-subvolume JSON, and the Wave 3 `disk_encryption`
 obj_id wiring + `encryption_password` casing, the `lvm_on_luks` >2-partition limit, the
@@ -705,14 +705,64 @@ Each agent worked TDD with the `golang-patterns`/`golang-testing` skills.
   clean.
 
 ### Follow-ups for the next agent (small)
-- **Trust UX is minimal by design.** `Strict` errors on unpinned github refs; the
-  non-strict "warn on unpinned `main`" and the "print resolved source list before the
-  `ConfirmErase` prompt" niceties from the design were *not* wired (configsrc stays UI-free).
-  Wire them in `main`/`ui` if desired.
-- **No provenance comment yet.** `render` writes the flattened YAML without the resolved-SHA
-  provenance header the design suggested.
+- ✅ **Trust UX wired in Wave 6.** `configsrc.Load` now returns a `[]Source` provenance list
+  (configsrc stays UI-free; `main` does the printing): `runPhase` `ui.Warn`s on every unpinned
+  github ref and prints the resolved remote-source list before `runStages` (hence before the
+  `archinstall` stage's `ConfirmErase` prompt). `--strict` still hard-errors as before.
+- ✅ **Provenance comment wired in Wave 6.** `render` prepends a `# Flattened by archwright
+  from: …` header (via `configsrc.ProvenanceComment`) listing each resolved source + resolved
+  URL when ≥1 remote source is present; pure-local renders stay header-free (byte-identical).
 - **VM/e2e still owes config-acceptance.** The flatten-once path and merge output should be
   exercised in the e2e run ([[e2e-testing-plan]]) feeding a real archinstall.
+
+---
+
+## Wave 6 retrospective — notes for the next agent
+
+Wave 6 (the Wave 5 trust/pinning UX + `render` provenance polish — the last non-e2e roadmap
+items) was built by **three worktree agents in two rounds**, each TDD with the
+`golang-patterns`/`golang-testing`/`tdd` skills.
+
+### What landed
+- **configsrc provenance (Agent A):** `Load` now returns `(*config.Config, []byte, []Source,
+  error)`. `Source{Ref, Kind, URL, Pinned, Unpinned}` is collected for every resolved ref +
+  import (base-first, deduped by `canonical()`), and `ProvenanceComment([]Source) string`
+  renders a `# `-prefixed YAML header — returning `""` when no remote (github/url) source is
+  present, so pure-local output is untouched.
+- **Trust UX (Agent B):** `runPhase` `ui.Warn`s on each unpinned github ref (recommends
+  `@<tag-or-sha>`; notes it drives destructive disk ops + arbitrary hooks) and prints the
+  resolved remote-source list *before* `runStages`, i.e. before the `archinstall` stage's
+  `ConfirmErase`. Pure-string helpers `remoteSources`/`unpinnedSources` keep the decision
+  unit-tested apart from the printing.
+- **Render provenance (Agent C):** `renderConfig` prepends `ProvenanceComment(srcs)` before the
+  flattened body when non-empty; all-local renders stay byte-identical (guarded by the
+  untouched `TestRenderConfig_FlattensMerge`).
+
+### Process that worked (reuse it)
+- **This was layered, not additive — so it was sequenced into rounds (the Wave 5 lesson held).**
+  All three deliverables consume one new configsrc API, so Round 1 was Agent A *alone*
+  (foundation), then Round 2 fanned out B + C in parallel off the integrated branch. Forcing
+  all three parallel would have meant stub-and-reconcile churn.
+- **The orchestrator did the mechanical signature migration centrally.** After merging A, the
+  orchestrator flipped all three `main.go` `Load` call sites to the 4-value form with `_`
+  placeholders and committed that as a separate `chore:` — so B and C each only had to flip
+  *their own* `_`→`srcs` in *their own* function (`runPhase` vs `renderConfig`). Different
+  functions in the shared `main.go` hotspot → **git auto-merged both with zero conflicts.**
+- **New test files only, again.** B added `main_warn_test.go`, C added
+  `main_provenance_test.go`; neither touched the shared `main_test.go`. The "" rule for
+  all-local provenance meant C didn't need to edit the existing render golden test at all.
+- **An agreed API contract up front made Round 2 frictionless** (same as Wave 5): both
+  prompts carried A's exact `Source`/`Load`/`ProvenanceComment` signatures verbatim, so Round 2
+  coded against real, already-merged code with no interface drift.
+- **Worktree base gotcha (still true).** Each Round-2 worktree started at `main` (no Wave 6
+  work); the prompts told B/C to `git fetch && git reset --hard feat/extensibility-wave6`
+  first, which worked cleanly. Keep handing agents the explicit base branch.
+
+### Follow-ups (small, optional)
+- The unpinned-ref warning + source-list print are wired in `runPhase` only; `validate`/`render`
+  don't warn (they're non-destructive). Add there too if desired.
+- `ProvenanceComment` does not yet record a resolved commit **SHA** for github refs (it lists the
+  ref + resolved HEAD/tag URL). Resolving the actual SHA would need an extra API call; deferred.
 
 ---
 

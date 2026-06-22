@@ -195,8 +195,10 @@ Fetching config that drives **destructive disk operations and arbitrary hook com
 a URL is a real trust boundary — treat it like one:
 
 - **Pin a ref.** Use `@<tag-or-sha>` on github shorthands; an unpinned `main` warns (and
-  refuses under `--strict`). Phase A prints the resolved source list + merged result before
-  the `ERASE` confirm, so you see exactly what you're about to run.
+  refuses under `--strict`). When any remote source is in play, Phase A prints the resolved
+  source list before the `ERASE` confirm, so you see exactly what you're about to run; `render`
+  prepends the same list as a `# Flattened by archwright from: …` provenance comment (use it to
+  preview the full merged result).
 - **`--offline` uses the cache only.** Fetched files are cached under
   `$XDG_CACHE_HOME/archwright/` keyed by URL+ref — handy when re-running on a flaky live-ISO
   network.
