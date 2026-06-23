@@ -1,0 +1,64 @@
+# e2e feature coverage: exercises the Phase A custom-repo stage (configureRepos)
+# with a KEY-ONLY repo — import + locally sign the signing key, then `pacman -Sy`.
+# No Server/Include means no pacman.conf section is written (safe + minimal); we
+# only assert the key landed in the keyring. The key below is the real, importable
+# chaotic-aur signing key. Disk layout is the same minimal single-disk LVM as
+# features-min.
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash
+  groups: [wheel]
+
+disks:
+  layout: lvm
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: swapfile
+    size: 256MiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: ext4
+    pvs:
+      - /dev/vda2
+
+mirrors:
+  reflector: false
+
+pacstrap:
+  - base-devel
+  - git
+  - sudo
+  - networkmanager
+  - efibootmgr
+  - intel-ucode
+
+repos:
+  - name: test-key
+    key: 3056513887B78AEB
+    keyserver: keyserver.ubuntu.com
+
+packages: []
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: grub
+
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+aur_helper: yay

@@ -1,0 +1,64 @@
+# e2e: single-disk LVM root (ext4) with the systemd-boot bootloader. systemd-boot's
+# archinstall JSON is reverse-engineered / VM-validation-pending, so this descriptor
+# exists to prove a real archinstall installs + boots it end-to-end. Trimmed like
+# configs/lvm-multi.yaml — every Phase B stage runs but stays fast + deterministic.
+# Device paths are the VM's virtio names, fixed by the orchestrator's disk topology.
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash    # bash so the serial-autologin .bash_profile autorun fires
+  groups: [wheel]
+
+disks:
+  layout: lvm
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: swapfile
+    size: 256MiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: ext4
+    pvs:
+      - /dev/vda2
+
+mirrors:
+  reflector: false
+
+# Complete Phase-A pacstrap set, rendered verbatim. base + the linux kernel are
+# added by archinstall itself; this lists what first boot + Phase B need.
+pacstrap:
+  - base-devel       # Phase B builds the AUR helper
+  - git
+  - sudo
+  - networkmanager   # network at first boot (archinstall enables it)
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - tree
+  - jq
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: systemd-boot
+
+# Everything below is left at its no-op default for the trimmed run:
+#   desktop none, dotfiles none, no flatpaks/aur/repos/plymouth/grub-theme.
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+aur_helper: yay

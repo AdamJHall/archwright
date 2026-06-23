@@ -1,0 +1,92 @@
+# e2e feature coverage (cheap bundle): one VM that exercises the stage features
+# that DON'T need a heavy desktop/flatpak/dotfiles download — reflector, a custom
+# kernel from the official repos (linux-zen), plymouth, the setup-stage clone,
+# a service enable, and hooks at every lifecycle/per-stage point. Disk layout is a
+# minimal single-disk LVM (the layout itself is covered by the disk matrix).
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash
+  groups: [wheel]
+
+disks:
+  layout: lvm
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: swapfile
+    size: 256MiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: ext4
+    pvs:
+      - /dev/vda2
+
+# reflector runs in Phase A before pacstrap.
+mirrors:
+  reflector: true
+  countries: [US]
+  latest: 5
+  protocols: [https]
+
+pacstrap:
+  - base-devel
+  - git
+  - sudo
+  - networkmanager
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - tree
+  - jq
+  - plymouth        # the plymouth stage needs the plymouth tooling
+
+# Custom kernel from the OFFICIAL repos (no custom repo needed): installed in the
+# Phase A chroot and set as the GRUB default; the stock linux is kept.
+kernel:
+  base: [linux]
+  packages: [linux-zen]
+  default: linux-zen
+  replace_stock: false
+
+bootloader:
+  kind: grub
+
+plymouth:
+  theme: spinner
+
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+# Setup stage: a tiny clone (the smallest stable public repo).
+setup:
+  steps:
+    - clone: { url: https://github.com/octocat/Hello-World, dest: ~/e2e-clone }
+
+# Services stage: enable a unit that ships with the base system.
+services:
+  enable:
+    - fstrim.timer
+
+# Hooks at every lifecycle + per-stage point we can assert from the booted system
+# (Phase B points run as the user; the root one runs privileged).
+hooks:
+  - { name: pre-bootstrap marker,  at: pre-bootstrap,    run: "touch ~/e2e-pre-bootstrap" }
+  - { name: post-bootstrap marker, at: post-bootstrap,   run: "touch ~/e2e-post-bootstrap" }
+  - { name: before packages,       at: "before:packages", run: "touch ~/e2e-before-packages" }
+  - { name: after packages,        at: "after:packages",  run: "touch ~/e2e-after-packages" }
+  - { name: root hook,             at: post-bootstrap,    root: true, run: "touch /e2e-root-hook" }
+
+aur_helper: yay

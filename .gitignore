@@ -5,6 +5,12 @@
 /archwright
 /.vm/
 
+# Cached Arch live ISO for the QEMU smoke test (downloaded by `task iso`).
+/.iso/
+
+# Per-run work dir for the automated VM e2e harness (disks, logs, scaffold).
+/.e2e/
+
 # Local upstream archinstall checkout, kept only as a schema reference.
 /archinstall/
 
@@ -12,6 +18,10 @@
 *.swp
 *~
 .DS_Store
+
+# Python bytecode cache (the e2e matrix loader imports modules under test/e2e/vm)
+__pycache__/
+*.pyc
 
 # agent worktrees
 .claude/worktrees/

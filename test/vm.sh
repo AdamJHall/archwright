@@ -23,7 +23,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="${VM_WORK:-$REPO/.vm}"
-ISO="${ARCH_ISO:-$HOME/Downloads/archlinux-2026.06.01-x86_64.iso}"
+ISO="${ARCH_ISO:-$REPO/.iso/archlinux-2026.06.01-x86_64.iso}"
 OVMF_CODE="/usr/share/edk2/x64/OVMF_CODE.4m.fd"
 OVMF_VARS_SRC="/usr/share/edk2/x64/OVMF_VARS.4m.fd"
 
