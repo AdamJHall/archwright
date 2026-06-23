@@ -447,10 +447,15 @@ func (b *lvmBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
 	}
 	pvOnDisk1 := roundDownMiB(disk1Total - used)
 
-	// A PV partition carries the LV filesystem as its fs_type purely so parted can
-	// create it (archinstall 4.x requires a non-null fs_type per partition); the
-	// filesystem is never written, the partition is pvcreated.
+	// A PV partition carries an LV filesystem as its fs_type purely so parted can
+	// create it (archinstall 4.x rejects an empty fs_type per partition); the
+	// filesystem is never written, the partition is pvcreated. In single-LV mode
+	// this is the root LV's filesystem; in multi-volume mode Filesystem is empty by
+	// schema, so fall back to the first volume's filesystem (any valid fs works).
 	pvFs := b.lvm.Filesystem
+	if pvFs == "" && len(b.lvm.Volumes) > 0 {
+		pvFs = b.lvm.Volumes[0].Filesystem
+	}
 	espPart := espPartition(espBytes)
 	disk1PVPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
