@@ -421,17 +421,13 @@ kde:
 
 ### Dotfiles
 
-The dotfiles stage supports a selectable manager. When the `dotfiles:` block is omitted, the
-manager defaults to `chezmoi` and the repo falls back to `chezmoi.repo` — so the block is only
-needed to pick a different manager or repo.
+The dotfiles stage applies your dotfiles via a selectable manager. The `manager` defaults to
+`chezmoi`, so it's optional; `repo` is required for any manager other than `none`.
 
 ```yaml
-chezmoi:
+dotfiles:
   repo: https://github.com/AdamJHall/dotfiles
-
-# dotfiles:
-#   manager: chezmoi             # chezmoi (default) | yadm | bare-git | none
-#   repo: https://github.com/AdamJHall/dotfiles   # defaults to chezmoi.repo when unset
+  # manager: chezmoi             # chezmoi (default) | yadm | bare-git | none
 ```
 
 | `manager` | What it runs |

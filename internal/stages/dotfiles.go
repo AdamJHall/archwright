@@ -12,8 +12,7 @@ import (
 // manager and apply the dotfiles. Final Phase B step before setup.
 //
 // The manager is selectable (chezmoi, yadm, bare-git, none); chezmoi is the
-// default and preserves the historical behaviour. The repo defaults to
-// chezmoi.repo when dotfiles.repo is unset, so pre-existing configs keep working.
+// default.
 type dotfiles struct{}
 
 func init() { register(dotfiles{}) }
@@ -30,14 +29,6 @@ func (dotfiles) effectiveManager(ctx *Context) string {
 	return "chezmoi"
 }
 
-// effectiveRepo returns dotfiles.repo, falling back to the legacy chezmoi.repo.
-func (dotfiles) effectiveRepo(ctx *Context) string {
-	if r := ctx.Cfg.Dotfiles.Repo; r != "" {
-		return r
-	}
-	return ctx.Cfg.Chezmoi.Repo
-}
-
 func (d dotfiles) Run(ctx *Context) error {
 	manager := d.effectiveManager(ctx)
 	if manager == "none" {
@@ -45,7 +36,7 @@ func (d dotfiles) Run(ctx *Context) error {
 		return nil
 	}
 
-	repo := d.effectiveRepo(ctx)
+	repo := ctx.Cfg.Dotfiles.Repo
 	if repo == "" {
 		ui.Warn("no dotfiles repo configured — skipping")
 		return nil
@@ -72,8 +63,8 @@ func (d dotfiles) Run(ctx *Context) error {
 	return nil
 }
 
-// runChezmoi preserves the historical behaviour exactly: install chezmoi, then
-// `chezmoi apply` if already initialized, else `chezmoi init --apply <repo>`.
+// runChezmoi installs chezmoi, then runs `chezmoi apply` if already initialized,
+// else `chezmoi init --apply <repo>`.
 func (dotfiles) runChezmoi(ctx *Context, repo string) error {
 	if err := ensureTool(ctx, "chezmoi", "chezmoi"); err != nil {
 		return err

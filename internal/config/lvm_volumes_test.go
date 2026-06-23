@@ -15,7 +15,7 @@ func TestValidate_LVMVolumes(t *testing.T) {
 		wantErr []string // substrings; empty means must be valid
 	}{
 		{
-			name: "single root LV (historical) is valid",
+			name: "single root LV is valid",
 			disks: `
 disks:
   esp: {device: /dev/nvme0n1, size: 1GiB}

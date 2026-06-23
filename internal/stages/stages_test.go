@@ -69,7 +69,7 @@ grub:
     name: tela
 kde:
   look_and_feel: org.kde.breezedark.desktop
-chezmoi:
+dotfiles:
   repo: https://github.com/AdamJHall/dotfiles
 setup:
   steps:

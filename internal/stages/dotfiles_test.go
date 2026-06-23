@@ -16,9 +16,9 @@ import (
 func chezmoiInitialized() bool { return homeHas(".local/share/chezmoi/.git") }
 
 func TestDotfiles_ChezmoiDefault(t *testing.T) {
-	// Unset manager defaults to chezmoi; unset dotfiles.repo falls back to chezmoi.repo.
+	// Unset manager defaults to chezmoi; the repo comes from dotfiles.repo.
 	plan := planForCfg(t, Bootstrap, "dotfiles", `
-chezmoi:
+dotfiles:
   repo: https://github.com/example/dotfiles
 `)
 	if chezmoiInitialized() {
@@ -29,22 +29,17 @@ chezmoi:
 }
 
 func TestDotfiles_ChezmoiExplicit(t *testing.T) {
-	// Explicit manager + dotfiles.repo (which takes precedence over chezmoi.repo).
+	// Explicit manager + repo.
 	plan := planForCfg(t, Bootstrap, "dotfiles", `
 dotfiles:
   manager: chezmoi
   repo: https://github.com/example/df-explicit
-chezmoi:
-  repo: https://github.com/example/legacy
 `)
 	if chezmoiInitialized() {
 		mustContain(t, plan, "chezmoi apply")
 		return
 	}
 	mustContain(t, plan, "chezmoi init --apply https://github.com/example/df-explicit")
-	if j := strings.Join(plan, "\n"); strings.Contains(j, "legacy") {
-		t.Errorf("dotfiles.repo should win over chezmoi.repo, got plan:\n%s", j)
-	}
 }
 
 func TestDotfiles_Yadm(t *testing.T) {
@@ -88,7 +83,7 @@ dotfiles:
 }
 
 func TestDotfiles_UnsetRepoSkips(t *testing.T) {
-	// A non-none manager with no repo (and no chezmoi.repo fallback) is a clean skip.
+	// A non-none manager with no repo is a clean skip.
 	plan := planForCfg(t, Bootstrap, "dotfiles", `
 dotfiles:
   manager: chezmoi
