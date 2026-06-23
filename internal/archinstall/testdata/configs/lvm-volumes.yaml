@@ -1,0 +1,29 @@
+# Single NVMe disk, multi-volume LVM: a fixed root LV (xfs) plus a /home LV
+# (ext4) taking the rest of the VG. Exercises the multi-volume PV fs_type path.
+system:
+  hostname: arch-volumes
+  timezone: Europe/London
+  locale: en_GB.UTF-8
+  keymap: uk
+user:
+  name: adam
+pacstrap: [base-devel, git, zsh, sudo, networkmanager, efibootmgr, intel-ucode]
+kernel:
+  base: [linux]
+disks:
+  esp:
+    device: /dev/nvme0n1
+    size: 1GiB
+  swap:
+    size: 8GiB
+  lvm:
+    vg: vg0
+    pvs: [/dev/nvme0n1p2]
+    volumes:
+      - name: root
+        mountpoint: /
+        filesystem: xfs
+        size: 50GiB
+      - name: home
+        mountpoint: /home
+        filesystem: ext4
