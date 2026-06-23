@@ -1,0 +1,59 @@
+# e2e: plain layout (ESP + single xfs root on vda) with no swap.
+# Trimmed so every Phase B stage runs but stays fast + deterministic — no heavy
+# desktop/AUR/flatpak/dotfiles. Device paths are the VM's virtio names, fixed by
+# the orchestrator's disk topology. Phase A runs with --yes (throwaway password).
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash    # bash so the serial-autologin .bash_profile autorun fires
+  groups: [wheel]
+
+disks:
+  layout: plain
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: none
+  plain:
+    device: /dev/vda
+    filesystem: xfs
+
+mirrors:
+  reflector: false
+
+# Complete Phase-A pacstrap set, rendered verbatim. base + the linux kernel are
+# added by archinstall itself; this lists what first boot + Phase B need.
+pacstrap:
+  - base-devel       # Phase B builds the AUR helper
+  - git
+  - sudo
+  - networkmanager   # network at first boot (archinstall enables it)
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - tree
+  - jq
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: grub
+
+# Everything below is left at its no-op default for the trimmed run:
+#   desktop none, dotfiles none, no flatpaks/aur/repos/plymouth/grub-theme.
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+aur_helper: yay

@@ -11,6 +11,13 @@ vars:
   LAYOUT: '{{.LAYOUT | default "multi-disk-lvm"}}'
   FS: '{{.FS | default "xfs"}}'
 
+  # Arch live ISO for the QEMU smoke test. Cached under the gitignored .iso/ dir
+  # and pinned to a dated archive build so the download is reproducible. Bump
+  # ISO_VERSION (CLI-overridable) in lockstep with the version in test/vm.sh.
+  ISO_VERSION: '{{.ISO_VERSION | default "2026.06.01"}}'
+  ISO_FILE: 'archlinux-{{.ISO_VERSION}}-x86_64.iso'
+  ISO_PATH: '.iso/{{.ISO_FILE}}'
+
 tasks:
   build:
     desc: Build the archwright binary.
@@ -41,17 +48,50 @@ tasks:
     cmds:
       - sudo bash test/e2e/disks.sh --mode full --layout {{.LAYOUT}} --fs {{.FS}} --disk1-size 12G --extra-size 6G
 
-  vm:
-    desc: Interactive QEMU smoke test — boot the Arch live ISO (run Phase A).
+  iso:
+    desc: >-
+      Download the pinned Arch live ISO into the gitignored .iso/ cache. Skipped
+      when the ISO is already present (no re-download). Override the build with
+      `task iso ISO_VERSION=YYYY.MM.DD`.
     cmds:
-      - bash test/vm.sh iso
+      - mkdir -p .iso
+      - curl -fL --progress-bar -o {{.ISO_PATH}} https://archive.archlinux.org/iso/{{.ISO_VERSION}}/{{.ISO_FILE}}
+    generates:
+      - '{{.ISO_PATH}}'
+    status:
+      - test -f {{.ISO_PATH}}
+
+  # vm / vm-fresh / vm-disk: INTERACTIVE, graphical QEMU for poking by hand (boot
+  # the live ISO and run archwright yourself, or boot the installed disk to look
+  # around). For unattended pass/fail validation use `vm-e2e` (below) instead.
+  vm:
+    desc: "Interactive QEMU: boot the Arch live ISO and run Phase A by hand (automated: vm-e2e)."
+    deps: [iso]
+    cmds:
+      - ARCH_ISO={{.ISO_PATH}} bash test/vm.sh iso
 
   vm-fresh:
-    desc: Boot the Arch live ISO, wiping the virtual disks first.
+    desc: "Interactive QEMU: boot the live ISO, wiping the virtual disks first."
+    deps: [iso]
     cmds:
-      - bash test/vm.sh iso --fresh
+      - ARCH_ISO={{.ISO_PATH}} bash test/vm.sh iso --fresh
 
   vm-disk:
-    desc: Boot the installed system off disk 1.
+    desc: "Interactive QEMU: boot the installed system off disk 1 (post-install poking)."
     cmds:
       - bash test/vm.sh disk
+
+  vm-e2e:
+    desc: >-
+      Fully automated VM e2e: boot ISO headless, run Phase A install, inject the
+      Phase B autorun scaffold, reboot, run bootstrap + validation. Pass a
+      descriptor name to run one (e.g. `task vm-e2e -- lvm-multi`); no arg runs the
+      whole matrix. Add `-- --jobs 5` (or `-j 5`) to run several VMs at once.
+    deps: [iso]
+    cmds:
+      - ARCH_ISO={{.ISO_PATH}} python3 test/e2e/vm/e2e.py {{.CLI_ARGS}}
+
+  vm-e2e-list:
+    desc: List the VM e2e matrix descriptors.
+    cmds:
+      - python3 test/e2e/vm/e2e.py --list

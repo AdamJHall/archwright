@@ -1,0 +1,57 @@
+# e2e: LUKS on a single plain root partition (encryption.type luks). Single disk.
+# Like enc-lvm, encrypted installs skip Phase B staging, so this validates the
+# on-disk LUKS layout on the live ISO. Passphrase is the --yes throwaway
+# install password ("installme").
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash
+  groups: [wheel]
+
+disks:
+  layout: plain
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: none
+  plain:
+    device: /dev/vda
+    filesystem: ext4
+  encryption:
+    type: luks
+
+mirrors:
+  reflector: false
+
+pacstrap:
+  - base-devel
+  - git
+  - sudo
+  - networkmanager
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - tree
+  - jq
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: grub
+
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+aur_helper: yay

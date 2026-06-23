@@ -1,0 +1,68 @@
+# e2e: single-disk btrfs root on vda (ESP p1 + btrfs root p2 carrying subvolumes).
+# Trimmed so every Phase B stage runs but stays fast + deterministic — no heavy
+# desktop/AUR/flatpak/dotfiles. Device paths are the VM's virtio names, fixed by
+# the orchestrator's disk topology. Phase A runs with --yes (throwaway password).
+# btrfs prefers zram swap: a swapfile needs a dedicated nocow/no-compress subvol,
+# so it is not emitted for this layout.
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash    # bash so the serial-autologin .bash_profile autorun fires
+  groups: [wheel]
+
+disks:
+  layout: btrfs
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: zram
+  btrfs:
+    device: /dev/vda
+    compress: zstd
+    # Single root subvolume: /home lives inside @. A SEPARATE @home subvolume
+    # currently breaks Phase B — archwright stages the binary/config into the
+    # wrong subvolume (postInstall remounts the bare partition, not @ + @home),
+    # so they're shadowed once /home mounts @home at boot. Flagged for an
+    # archwright-side fix; see test/e2e/vm/README.md.
+    subvolumes:
+      - { name: "@", mountpoint: / }
+
+mirrors:
+  reflector: false
+
+# Complete Phase-A pacstrap set, rendered verbatim. base + the linux kernel are
+# added by archinstall itself; this lists what first boot + Phase B need.
+pacstrap:
+  - base-devel       # Phase B builds the AUR helper
+  - git
+  - sudo
+  - networkmanager   # network at first boot (archinstall enables it)
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - tree
+  - jq
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: grub
+
+# Everything below is left at its no-op default for the trimmed run:
+#   desktop none, dotfiles none, no flatpaks/aur/repos/plymouth/grub-theme.
+desktop:
+  environment: none
+
+dotfiles:
+  manager: none
+
+aur_helper: yay

@@ -1,0 +1,61 @@
+# e2e feature coverage: exercises the Phase B dotfiles stage — chezmoi
+# `init --apply` from a tiny LOCAL repo the harness injects into the target
+# (file:///home/e2e/dots), so it's deterministic + offline (no large external
+# clone, no apply scripts that prompt/hang). The injected repo manages a single
+# `dot_e2e-dotfile`, which chezmoi applies to ~/.e2e-dotfile — features.sh's
+# "dotfiles" token asserts that. Disk layout is the minimal single-disk LVM.
+system:
+  hostname: arch-e2e
+  timezone: Etc/UTC
+  locale: en_US.UTF-8
+  keymap: us
+  ntp: false
+
+user:
+  name: e2e
+  shell: /usr/bin/bash
+  groups: [wheel]
+
+disks:
+  layout: lvm
+  esp:
+    device: /dev/vda
+    size: 512MiB
+  swap:
+    type: swapfile
+    size: 256MiB
+  lvm:
+    vg: vg0
+    lv: root
+    filesystem: ext4
+    pvs:
+      - /dev/vda2
+
+mirrors:
+  reflector: false
+
+pacstrap:
+  - base-devel
+  - git
+  - sudo
+  - networkmanager
+  - efibootmgr
+  - intel-ucode
+
+packages:
+  - chezmoi        # the dotfiles stage installs this if missing; listing it is harmless
+
+kernel:
+  base: [linux]
+
+bootloader:
+  kind: grub
+
+desktop:
+  environment: none
+
+dotfiles:
+  manager: chezmoi
+  repo: file:///home/e2e/dots   # injected by the harness (see matrix/features_extra.py inject_repo)
+
+aur_helper: yay
