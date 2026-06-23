@@ -661,34 +661,13 @@ disks.lvm.pvs must have at least 1 item(s)
 ## Testing in a VM
 
 **Recommended before real hardware.** Phase A repartitions disks, so smoke-test the whole flow
-in QEMU with three virtual disks. This is also where you **validate the generated archinstall
-JSON** against the archinstall version on the ISO.
+in QEMU before trusting it on hardware — this is also where you **validate the generated
+archinstall JSON** against the archinstall version on the ISO.
 
-```sh
-# Three disks: 100G (disk 1: ESP+swap+PV) + 2× 50G (whole-disk PVs)
-qemu-img create -f qcow2 disk1.qcow2 100G
-qemu-img create -f qcow2 disk2.qcow2 50G
-qemu-img create -f qcow2 disk3.qcow2 50G
-
-qemu-system-x86_64 \
-  -enable-kvm -m 8G -smp 4 \
-  -cpu host \                                     # required: CachyOS repo setup probes CPU features
-  -bios /usr/share/edk2/x64/OVMF.4m.fd \          # UEFI firmware (edk2-ovmf)
-  -drive file=disk1.qcow2,if=virtio \
-  -drive file=disk2.qcow2,if=virtio \
-  -drive file=disk3.qcow2,if=virtio \
-  -cdrom archlinux-x86_64.iso \
-  -boot d
-```
-
-Inside the VM the disks appear as `/dev/vda`, `/dev/vdb`, `/dev/vdc` — set `config.yaml`
-accordingly (`esp.device: /dev/vda`, PVs `/dev/vda3`, `/dev/vdb`, `/dev/vdc`). Use
-`./archwright install --yes` to skip the interactive prompts during automated runs.
-
-`install --dry-run` prints the rendered config without running anything; a real `install` writes
-`/tmp/archinstall-config.json` + `/tmp/archinstall-creds.json` and invokes `archinstall
---silent`. If archinstall rejects the config after a version bump, diff its schema and update
-`internal/archinstall` + the pinned `Version`.
+The harnesses and the full test pyramid (fast checks → loopback integration → interactive VM →
+automated VM e2e) live in [CONTRIBUTING.md](CONTRIBUTING.md#testing). In short, `task vm-fresh`
+boots the live ISO with clean disks and shares the repo over 9p, and `task vm-e2e` runs the
+headless install → bootstrap → validate flow unattended.
 
 ## For contributors
 
