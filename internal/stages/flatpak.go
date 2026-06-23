@@ -31,7 +31,7 @@ func (flatpak) Run(ctx *Context) error {
 	// used, must be listed in flatpak_remotes (validation guarantees every app's
 	// remote is declared).
 	for _, rem := range ctx.Cfg.FlatpakRemotes {
-		if err := ctx.R.Cmd("flatpak", "remote-add", "--if-not-exists", rem.Name, rem.URL); err != nil {
+		if err := ctx.R.Cmd("flatpak", "--user", "remote-add", "--if-not-exists", rem.Name, rem.URL); err != nil {
 			return err
 		}
 	}
@@ -40,7 +40,7 @@ func (flatpak) Run(ctx *Context) error {
 	// unambiguous (an accepted cost over one batched install).
 	for _, app := range apps {
 		remote, appid, _ := strings.Cut(app, ":")
-		if err := ctx.R.Cmd("flatpak", "install", "-y", "--noninteractive", remote, appid); err != nil {
+		if err := ctx.R.Cmd("flatpak", "--user", "install", "-y", "--noninteractive", remote, appid); err != nil {
 			return err
 		}
 	}

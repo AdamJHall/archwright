@@ -8,7 +8,7 @@
   "kernels": [
     "linux"
   ],
-  "hostname": "arch-btrfs",
+  "hostname": "arch-volumes",
   "packages": [
     "base-devel",
     "git",
@@ -20,7 +20,7 @@
   ],
   "timezone": "Europe/London",
   "ntp": true,
-  "swap": true,
+  "swap": false,
   "locale_config": {
     "kb_layout": "uk",
     "sys_enc": "UTF-8",
@@ -86,32 +86,63 @@
                 "unit": "B"
               }
             },
-            "fs_type": "btrfs",
+            "fs_type": "xfs",
             "mountpoint": null,
-            "mount_options": [
-              "compress=zstd"
-            ],
+            "mount_options": [],
             "flags": [],
             "dev_path": null,
-            "btrfs": [
-              {
-                "name": "@",
-                "mountpoint": "/"
-              },
-              {
-                "name": "@home",
-                "mountpoint": "/home"
-              },
-              {
-                "name": "@log",
-                "mountpoint": "/var/log"
-              }
-            ]
+            "btrfs": []
           }
         ]
       }
     ],
-    "lvm_config": null,
+    "lvm_config": {
+      "config_type": "default",
+      "vol_groups": [
+        {
+          "name": "vg0",
+          "lvm_pvs": [
+            "objid-0002"
+          ],
+          "volumes": [
+            {
+              "obj_id": "objid-0003",
+              "status": "create",
+              "name": "root",
+              "fs_type": "xfs",
+              "length": {
+                "value": 53687091200,
+                "unit": "B",
+                "sector_size": {
+                  "value": 512,
+                  "unit": "B"
+                }
+              },
+              "mountpoint": "/",
+              "mount_options": [],
+              "btrfs": []
+            },
+            {
+              "obj_id": "objid-0004",
+              "status": "create",
+              "name": "home",
+              "fs_type": "ext4",
+              "length": {
+                "value": 220106588160,
+                "unit": "B",
+                "sector_size": {
+                  "value": 512,
+                  "unit": "B"
+                }
+              },
+              "mountpoint": "/home",
+              "mount_options": [],
+              "btrfs": []
+            }
+          ]
+        }
+      ]
+    },
     "disk_encryption": null
   },
   "version": "4.3",

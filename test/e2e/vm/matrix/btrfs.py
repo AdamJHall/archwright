@@ -9,13 +9,12 @@ DESCRIPTORS = [
         "user": "e2e",
         "phase_b": True,
         "esp_part": "/dev/vda1",
-        # archinstall installs the system into the btrfs TOP-LEVEL subvolume (the
-        # default, subvolid 5) — the configured @ is created but not used as root —
-        # so we mount the bare partition (its default subvol), matching archwright's
-        # own postInstall/rootDevice. (That the named subvolumes aren't the root
-        # mount is a separate btrfs finding noted in README.md.)
+        # The system is installed inside the @ subvolume (archwright renders the
+        # btrfs root partition with a null mountpoint so @ drives /), so the
+        # scaffold injection must mount @, matching archwright's own postInstall.
+        # Mounting the bare partition would expose only the empty top-level subvol.
         "root_mount": [
-            "mount /dev/vda2 /mnt",
+            "mount -o subvol=@ /dev/vda2 /mnt",
         ],
         "grub_serial": True,
         "expect": {
@@ -31,8 +30,9 @@ DESCRIPTORS = [
         "user": "e2e",
         "phase_b": True,
         "esp_part": "/dev/vda1",
+        # System installed inside @ (see btrfs-basic); mount @ for scaffold inject.
         "root_mount": [
-            "mount /dev/vda2 /mnt",
+            "mount -o subvol=@ /dev/vda2 /mnt",
         ],
         "grub_serial": True,
         "expect": {

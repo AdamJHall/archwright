@@ -26,11 +26,9 @@ disks:
   btrfs:
     device: /dev/vda
     compress: zstd
-    # Single root subvolume: /home lives inside @. A SEPARATE @home subvolume
-    # currently breaks Phase B — archwright stages the binary/config into the
-    # wrong subvolume (postInstall remounts the bare partition, not @ + @home),
-    # so they're shadowed once /home mounts @home at boot. Flagged for an
-    # archwright-side fix; see test/e2e/vm/README.md.
+    # Single root subvolume: /home lives inside @. archwright installs the system
+    # inside @ and postInstall mounts subvol=@ (plus any non-root subvolume such
+    # as @home at its mountpoint), so a separate @home would also stage correctly.
     subvolumes:
       - { name: "@", mountpoint: / }
 

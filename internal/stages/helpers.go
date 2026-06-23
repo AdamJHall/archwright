@@ -50,15 +50,20 @@ func ensureKernelParam(ctx *Context, tok string) error {
 // "apply the config" step, keyed off the configured bootloader:
 //   - grub: runs grub-mkconfig -o /boot/grub/grub.cfg through Root — UNCHANGED from
 //     before, byte-identical command.
-//   - systemd-boot: there is no grub.cfg to regenerate. We run `bootctl update` to
-//     refresh the installed boot loader binary on the ESP; loader entries are
-//     regenerated separately by kernel-install when the cmdline changes. This is
-//     VM-validation-pending: on some setups `bootctl update` is a no-op and the
-//     entry refresh happens via the kernel-install hooks instead — verify against a
-//     real systemd-boot system in a QEMU VM before trusting on hardware.
+//   - systemd-boot: there is no grub.cfg to regenerate. We refresh the installed
+//     boot loader binary on the ESP with `bootctl update --graceful`; loader entries
+//     are regenerated separately by kernel-install when the cmdline changes. The
+//     `--graceful` flag makes bootctl exit 0 when there is nothing to do (the loader
+//     archinstall just installed is already current) instead of failing, and the
+//     whole step is best-effort via TryRoot so a nonzero exit can never abort the
+//     stage — the loader was already installed by archinstall and our cmdline edits
+//     live in /etc/kernel/cmdline, which systemd-boot reads directly. (See
+//     docs/bugs/plymouth-bootctl-update-fails-systemd-boot.md.)
 func regenerateBootConfig(ctx *Context) error {
 	if ctx.Cfg.Bootloader.EffectiveKind() == "systemd-boot" {
-		return ctx.R.Root("bootctl", "update")
+		// Best-effort + graceful: never fail the stage on "already current".
+		ctx.R.TryRoot("bootctl", "update", "--graceful")
+		return nil
 	}
 	return ctx.R.Root("grub-mkconfig", "-o", "/boot/grub/grub.cfg")
 }

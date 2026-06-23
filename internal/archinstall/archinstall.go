@@ -358,7 +358,7 @@ func buildEncryption(encType string, devices []Device, lvm *LvmConfiguration) (*
 		var rootObjID string
 		for _, dev := range devices {
 			for _, p := range dev.Partitions {
-				if p.Mountpoint != nil && *p.Mountpoint == "/" {
+				if partitionIsRoot(p) {
 					rootObjID = p.ObjID
 				}
 			}
@@ -447,10 +447,15 @@ func (b *lvmBuilder) build(geom Geometry) ([]Device, *LvmConfiguration, error) {
 	}
 	pvOnDisk1 := roundDownMiB(disk1Total - used)
 
-	// A PV partition carries the LV filesystem as its fs_type purely so parted can
-	// create it (archinstall 4.x requires a non-null fs_type per partition); the
-	// filesystem is never written, the partition is pvcreated.
+	// A PV partition carries an LV filesystem as its fs_type purely so parted can
+	// create it (archinstall 4.x rejects an empty fs_type per partition); the
+	// filesystem is never written, the partition is pvcreated. In single-LV mode
+	// this is the root LV's filesystem; in multi-volume mode Filesystem is empty by
+	// schema, so fall back to the first volume's filesystem (any valid fs works).
 	pvFs := b.lvm.Filesystem
+	if pvFs == "" && len(b.lvm.Volumes) > 0 {
+		pvFs = b.lvm.Volumes[0].Filesystem
+	}
 	espPart := espPartition(espBytes)
 	disk1PVPart := Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
@@ -643,14 +648,42 @@ func singleDiskRoot(esp config.ESPConfig, swap config.SwapConfig, espBytes uint6
 
 	root := "/"
 	rootFs := spec.fsType
+
+	// When the root partition carries btrfs subvolumes, the subvolume entries
+	// (e.g. {"name":"@","mountpoint":"/"}) provide the mountpoints, so the
+	// partition's own mountpoint must be null — otherwise archinstall mounts the
+	// bare partition (top-level subvol, subvolid 5) at "/" and the configured @
+	// subvolume is created but never used as root. With no subvolumes
+	// (plain/ext4 layouts) the partition itself is mounted at "/".
+	rootMount := &root
+	if len(spec.btrfs) > 0 {
+		rootMount = nil
+	}
 	parts = append(parts, Partition{
 		ObjID: newObjID(), Status: "create", Type: "primary",
 		Start: bytes(offset), Size: bytes(rootBytes),
-		FsType: &rootFs, Mountpoint: &root,
+		FsType: &rootFs, Mountpoint: rootMount,
 		MountOptions: spec.mountOptions, Flags: []string{}, Btrfs: spec.btrfs,
 	})
 
 	return []Device{{Device: disk1, Wipe: true, Partitions: parts}}, nil
+}
+
+// partitionIsRoot reports whether p provides the "/" mount, accounting for both
+// shapes: a plain/ext4/lvm partition mounted directly at "/" (Mountpoint == "/"),
+// and a btrfs partition whose own Mountpoint is null but which carries a
+// subvolume (e.g. "@") mapped to "/". The btrfs case matters because the root
+// partition's Mountpoint is deliberately null when subvolumes drive the mounts.
+func partitionIsRoot(p Partition) bool {
+	if p.Mountpoint != nil && *p.Mountpoint == "/" {
+		return true
+	}
+	for _, sv := range p.Btrfs {
+		if bs, ok := sv.(BtrfsSubvolume); ok && bs.Mountpoint != nil && *bs.Mountpoint == "/" {
+			return true
+		}
+	}
+	return false
 }
 
 // --- btrfs layout -----------------------------------------------------------

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -128,13 +129,30 @@ func postInstall(ctx *Context) error {
 	}
 	esp := archinstall.PartDev(ctx.Cfg.Disks.ESP.Device, 1)
 
-	// Checked mounts (Issue #2): a failed remount must abort, not silently run the
-	// chroot steps against an empty /mnt. (The umounts below stay best-effort.)
-	if err := ctx.R.Root("mount", rootDev, "/mnt"); err != nil {
+	// Remount the target for the chroot work. archinstall unmounts on finish, so we
+	// rebuild the mount tree exactly as the installed system sees it.
+	//
+	// For btrfs the system lives INSIDE the root subvolume (e.g. @), not the
+	// top-level subvolume: archinstall installs into @ and mounts it at /. Mounting
+	// the bare partition would expose only the (empty) top-level subvol — /boot and
+	// /home/<user> would be missing and staging would fail — so we must mount the
+	// root subvolume with subvol=<name>, and mount any non-root subvolumes
+	// (e.g. @home at /home) so staged files land in the right subvolume.
+	mounts, err := targetMounts(ctx.Cfg, rootDev, esp)
+	if err != nil {
 		return err
 	}
-	if err := ctx.R.Root("mount", esp, "/mnt/boot"); err != nil {
-		return err
+	// Checked mounts (Issue #2): a failed remount must abort, not silently run the
+	// chroot steps against an empty /mnt. (The umounts below stay best-effort.)
+	for _, m := range mounts {
+		var args []string
+		if len(m.opts) > 0 {
+			args = append(args, "-o", strings.Join(m.opts, ","))
+		}
+		args = append(args, m.dev, m.target)
+		if err := ctx.R.Root("mount", args...); err != nil {
+			return err
+		}
 	}
 
 	if err := setupSwapfile(ctx); err != nil {
@@ -164,9 +182,103 @@ func postInstall(ctx *Context) error {
 		return err
 	}
 
-	ctx.R.Try("umount", "/mnt/boot")
-	ctx.R.Try("umount", "/mnt")
+	// Unmount in reverse so nested subvolume/ESP mounts come off before /mnt.
+	for i := len(mounts) - 1; i >= 0; i-- {
+		ctx.R.Try("umount", mounts[i].target)
+	}
 	return nil
+}
+
+// mount is one entry in the target mount tree rebuilt for post-install chroot
+// work: a device mounted at an absolute /mnt path with optional mount options.
+type mount struct {
+	dev    string
+	target string
+	opts   []string
+}
+
+// targetMounts builds the ordered mount tree for the installed system, rebuilt
+// so post-install staging writes into the same filesystem each path resolves to
+// at boot. The root device is at /mnt and the ESP at /mnt/boot; crucially, any
+// layout with a SEPARATE /home (or other non-root mount) must also remount it,
+// otherwise staging into /mnt/home/<user> lands on the root fs and is shadowed
+// once the real /home mounts over it at boot — which strands the Phase B binary
+// and config (and, in the e2e harness, the autorun trigger).
+//
+//   - btrfs: the system lives inside the root subvolume, so root is mounted with
+//     subvol=<root> and every non-root subvolume at its mountpoint under /mnt.
+//   - lvm multi-volume: each non-root volume (e.g. a /home LV) is mounted at its
+//     mountpoint under /mnt via /dev/<vg>/<name>.
+//
+// Non-root mounts are ordered shallowest-first so a parent is mounted before any
+// nested child (e.g. /home before /home/foo).
+func targetMounts(cfg *config.Config, rootDev, esp string) ([]mount, error) {
+	switch cfg.Disks.EffectiveLayout() {
+	case "btrfs":
+		if cfg.Disks.Btrfs == nil {
+			break
+		}
+		var rootSub string
+		var others []config.Subvol
+		for _, sv := range cfg.Disks.Btrfs.Subvolumes {
+			if sv.Mountpoint == "/" {
+				rootSub = sv.Name
+			} else {
+				others = append(others, sv)
+			}
+		}
+		if rootSub == "" {
+			return nil, fmt.Errorf("btrfs layout has no subvolume mounted at /")
+		}
+		mounts := []mount{
+			{dev: rootDev, target: "/mnt", opts: []string{"subvol=" + rootSub}},
+			{dev: esp, target: "/mnt/boot"},
+		}
+		sortByDepth(others, func(s config.Subvol) string { return s.Mountpoint })
+		for _, sv := range others {
+			mounts = append(mounts, mount{
+				dev:    rootDev,
+				target: "/mnt" + sv.Mountpoint,
+				opts:   []string{"subvol=" + sv.Name},
+			})
+		}
+		return mounts, nil
+
+	case "lvm":
+		mounts := []mount{
+			{dev: rootDev, target: "/mnt"},
+			{dev: esp, target: "/mnt/boot"},
+		}
+		if cfg.Disks.LVM != nil {
+			var others []config.LVMVolume
+			for _, v := range cfg.Disks.LVM.Volumes {
+				if v.Mountpoint != "/" {
+					others = append(others, v)
+				}
+			}
+			sortByDepth(others, func(v config.LVMVolume) string { return v.Mountpoint })
+			for _, v := range others {
+				mounts = append(mounts, mount{
+					dev:    fmt.Sprintf("/dev/%s/%s", cfg.Disks.LVM.VG, v.Name),
+					target: "/mnt" + v.Mountpoint,
+				})
+			}
+		}
+		return mounts, nil
+	}
+
+	return []mount{
+		{dev: rootDev, target: "/mnt"},
+		{dev: esp, target: "/mnt/boot"},
+	}, nil
+}
+
+// sortByDepth orders entries shallowest-mountpoint first (by path separator
+// count) so a parent mount is always applied before a nested child.
+func sortByDepth[T any](s []T, mp func(T) string) {
+	sort.SliceStable(s, func(i, j int) bool {
+		return strings.Count(mp(s[i]), "/") < strings.Count(mp(s[j]), "/")
+	})
 }
 
 // setupSwapfile creates /swapfile on the freshly installed root and enables it

@@ -28,9 +28,13 @@ DESCRIPTORS = [
         "user": "e2e",
         "phase_b": True,
         "esp_part": "/dev/vda1",
+        # /home is a separate LV: mount it too so the scaffold injected into
+        # /mnt/home/e2e isn't shadowed when the home LV mounts at boot (matches
+        # archwright's postInstall, which now remounts non-root LVM volumes).
         "root_mount": [
             "vgchange -ay vg0",
             "mount /dev/vg0/root /mnt",
+            "mount /dev/vg0/home /mnt/home",
         ],
         "grub_serial": True,
         "expect": {

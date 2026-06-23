@@ -47,6 +47,10 @@ var renderCases = []struct {
 		name: "lvm-zram",
 		geom: Geometry{"/dev/nvme0n1": 256 << 30}, // 256 GiB
 	},
+	{
+		name: "lvm-volumes",
+		geom: Geometry{"/dev/nvme0n1": 256 << 30}, // 256 GiB
+	},
 }
 
 // TestRenderGolden renders every fixture config against fixed geometry and

@@ -121,10 +121,12 @@ func TestBuild_LuksOnBtrfsRoot(t *testing.T) {
 	if len(enc.Partitions) != 1 {
 		t.Fatalf("want exactly 1 encrypted partition, got %d", len(enc.Partitions))
 	}
-	// The encrypted partition must be the one mounted at "/".
+	// The encrypted partition must be the one providing "/". For btrfs that is
+	// the partition carrying the @ subvolume mapped to "/" (its own mountpoint
+	// is null), not a partition mounted directly at "/".
 	var rootObjID string
 	for _, p := range c.DiskConfig.DeviceModifications[0].Partitions {
-		if p.Mountpoint != nil && *p.Mountpoint == "/" {
+		if partitionIsRoot(p) {
 			rootObjID = p.ObjID
 		}
 	}

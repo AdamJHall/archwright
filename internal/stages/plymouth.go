@@ -18,9 +18,13 @@ func (plymouth) Name() string { return "plymouth" }
 func (plymouth) Phase() Phase { return Bootstrap }
 
 func (plymouth) Run(ctx *Context) error {
+	// Gate off when unconfigured: with no plymouth.theme set the stage is a clean
+	// no-op so a default config never installs plymouth or touches the bootloader
+	// (see docs/bugs/plymouth-bootctl-update-fails-systemd-boot.md).
 	theme := ctx.Cfg.Plymouth.Theme
 	if theme == "" {
-		theme = "bgrt"
+		ui.Warn("no plymouth theme in config — skipping")
+		return nil
 	}
 	cmdline := ctx.Cfg.GRUB.CmdlineExtra
 	if cmdline == "" {

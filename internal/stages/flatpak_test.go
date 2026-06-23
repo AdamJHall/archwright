@@ -21,20 +21,35 @@ flatpaks:
   - flathub-beta:org.mozilla.firefox
 `)
 	mustContain(t, plan,
-		// exactly the declared remotes, added verbatim
-		"flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
-		"flatpak remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo",
-		// each app installed from its own named remote (per-app)
-		"flatpak install -y --noninteractive flathub com.spotify.Client",
-		"flatpak install -y --noninteractive flathub-beta org.mozilla.firefox",
+		// exactly the declared remotes, added verbatim — per-user scope (--user)
+		// so no polkit/root is needed (org.freedesktop.Flatpak.modify-repo hang).
+		"flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
+		"flatpak --user remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo",
+		// each app installed from its own named remote (per-app), per-user + noninteractive
+		"flatpak --user install -y --noninteractive flathub com.spotify.Client",
+		"flatpak --user install -y --noninteractive flathub-beta org.mozilla.firefox",
 	)
+
+	joined := strings.Join(plan, "\n")
 
 	// No unconditional/built-in flathub remote-add: the only flathub remote-add
 	// is the one the config declared (asserted above). There must be no install
 	// that pins every app to flathub regardless of its declared remote.
-	joined := strings.Join(plan, "\n")
-	if strings.Contains(joined, "flatpak install -y --noninteractive flathub org.mozilla.firefox") {
+	if strings.Contains(joined, "flatpak --user install -y --noninteractive flathub org.mozilla.firefox") {
 		t.Errorf("firefox should install from flathub-beta, not flathub; plan:\n%s", joined)
+	}
+
+	// Every invocation of the flatpak *binary* must stay unprivileged (Cmd, never
+	// Root/sudo): a system-scope flatpak op as the user drops into a polkit
+	// Password: prompt and bootstrap hangs forever in a headless/TTY session. We
+	// match flatpak as the command (after any sudo prefix), not as an argument —
+	// `sudo pacman -S … flatpak` (the ensureTool package install, only recorded
+	// when flatpak is absent) is legitimately privileged and must not trip this.
+	for _, line := range plan {
+		cmd := strings.TrimPrefix(line, "sudo ")
+		if cmd != line && strings.HasPrefix(cmd, "flatpak ") {
+			t.Errorf("flatpak must run unprivileged (no sudo) to avoid a polkit hang; got: %q", line)
+		}
 	}
 }
 
