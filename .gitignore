@@ -25,3 +25,7 @@ __pycache__/
 
 # agent worktrees
 .claude/worktrees/
+
+# per-developer local Claude Code settings (allowlists etc.); shared settings
+# belong in the tracked .claude/settings.json
+.claude/settings.local.json
