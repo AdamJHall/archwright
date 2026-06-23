@@ -46,6 +46,50 @@ func TestTargetMounts_BtrfsNoRoot(t *testing.T) {
 	}
 }
 
+// TestTargetMounts_LvmVolumes mounts non-root LVM volumes (e.g. a /home LV) at
+// their mountpoints so staging into /mnt/home/<user> isn't shadowed once the
+// home LV mounts at boot. Single-LV layouts (no extra volumes) add no extra
+// mounts.
+func TestTargetMounts_LvmVolumes(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Disks.Layout = "lvm"
+	cfg.Disks.LVM = &config.LVMLayout{
+		VG: "vg0",
+		Volumes: []config.LVMVolume{
+			{Name: "root", Mountpoint: "/", Filesystem: "xfs"},
+			{Name: "home", Mountpoint: "/home", Filesystem: "ext4"},
+		},
+	}
+
+	got, err := targetMounts(cfg, "/dev/vg0/root", "/dev/vda1")
+	if err != nil {
+		t.Fatalf("targetMounts: %v", err)
+	}
+	want := []mount{
+		{dev: "/dev/vg0/root", target: "/mnt"},
+		{dev: "/dev/vda1", target: "/mnt/boot"},
+		{dev: "/dev/vg0/home", target: "/mnt/home"},
+	}
+	assertMounts(t, want, got)
+}
+
+// TestTargetMounts_LvmSingle adds no extra mounts when there is one root LV.
+func TestTargetMounts_LvmSingle(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Disks.Layout = "lvm"
+	cfg.Disks.LVM = &config.LVMLayout{VG: "vg0", LV: "root", Filesystem: "xfs"}
+
+	got, err := targetMounts(cfg, "/dev/vg0/root", "/dev/vda1")
+	if err != nil {
+		t.Fatalf("targetMounts: %v", err)
+	}
+	want := []mount{
+		{dev: "/dev/vg0/root", target: "/mnt"},
+		{dev: "/dev/vda1", target: "/mnt/boot"},
+	}
+	assertMounts(t, want, got)
+}
+
 // TestTargetMounts_Plain leaves the non-btrfs path unchanged: bare root at /mnt,
 // ESP at /mnt/boot, no subvol options.
 func TestTargetMounts_Plain(t *testing.T) {
