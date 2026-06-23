@@ -67,7 +67,10 @@ func TestBuild_BtrfsLayout(t *testing.T) {
 		t.Fatalf("want ESP + btrfs root, got %d", len(parts))
 	}
 	root := parts[1]
-	if root.FsType == nil || *root.FsType != "btrfs" || root.Mountpoint == nil || *root.Mountpoint != "/" {
+	// The btrfs root partition's own mountpoint is null: the @ subvolume below
+	// (mountpoint "/") is what archinstall mounts at /, so the system lands
+	// inside @ rather than the top-level subvolume.
+	if root.FsType == nil || *root.FsType != "btrfs" || root.Mountpoint != nil {
 		t.Errorf("btrfs root wrong: %+v", root)
 	}
 	if len(root.MountOptions) != 1 || root.MountOptions[0] != "compress=zstd" {

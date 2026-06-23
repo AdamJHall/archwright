@@ -87,7 +87,7 @@
               }
             },
             "fs_type": "btrfs",
-            "mountpoint": "/",
+            "mountpoint": null,
             "mount_options": [
               "compress=zstd"
             ],
