@@ -97,9 +97,9 @@ flatpaks: [flathub-beta:com.spotify.Client]
 `)
 	mustContain(t, plan,
 		// exactly the declared remotes — no remote is implicit
-		"flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
-		"flatpak remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo",
+		"flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
+		"flatpak --user remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo",
 		// the app installs from its named remote
-		"flatpak install -y --noninteractive flathub-beta com.spotify.Client",
+		"flatpak --user install -y --noninteractive flathub-beta com.spotify.Client",
 	)
 }

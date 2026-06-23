@@ -208,8 +208,8 @@ func TestPlan_AUR(t *testing.T) {
 
 func TestPlan_Flatpak(t *testing.T) {
 	mustContain(t, planFor(t, Bootstrap, "flatpak"),
-		"flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
-		"flatpak install -y --noninteractive flathub com.spotify.Client",
+		"flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
+		"flatpak --user install -y --noninteractive flathub com.spotify.Client",
 	)
 }
 
