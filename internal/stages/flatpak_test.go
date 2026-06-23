@@ -39,11 +39,15 @@ flatpaks:
 		t.Errorf("firefox should install from flathub-beta, not flathub; plan:\n%s", joined)
 	}
 
-	// Every flatpak invocation must stay unprivileged (Cmd, never Root/sudo):
-	// a system-scope flatpak op as the user drops into a polkit Password: prompt
-	// and bootstrap hangs forever in a headless/TTY session.
+	// Every invocation of the flatpak *binary* must stay unprivileged (Cmd, never
+	// Root/sudo): a system-scope flatpak op as the user drops into a polkit
+	// Password: prompt and bootstrap hangs forever in a headless/TTY session. We
+	// match flatpak as the command (after any sudo prefix), not as an argument —
+	// `sudo pacman -S … flatpak` (the ensureTool package install, only recorded
+	// when flatpak is absent) is legitimately privileged and must not trip this.
 	for _, line := range plan {
-		if strings.HasPrefix(line, "sudo ") && strings.Contains(line, "flatpak") {
+		cmd := strings.TrimPrefix(line, "sudo ")
+		if cmd != line && strings.HasPrefix(cmd, "flatpak ") {
 			t.Errorf("flatpak must run unprivileged (no sudo) to avoid a polkit hang; got: %q", line)
 		}
 	}
