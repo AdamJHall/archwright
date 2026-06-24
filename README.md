@@ -79,6 +79,17 @@ go build -ldflags "-s -w -X main.version=$(git describe --tags --always)" -o arc
 
 Or grab a prebuilt binary from a [GitHub release](#releases).
 
+### Quick install
+
+A one-liner to grab a release — handy on the Arch live ISO:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/AdamJHall/archwright/main/get.sh | bash
+```
+
+[`get.sh`](get.sh) lists the last few releases, lets you pick one (Enter = latest), then
+downloads, checksum-verifies and untars the binary into the current directory.
+
 ## Commands & flags
 
 ```
