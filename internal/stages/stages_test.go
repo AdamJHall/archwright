@@ -249,10 +249,10 @@ func TestPlan_Setup(t *testing.T) {
 	}
 }
 
-// kde and yay are host-state dependent (need plasma tools / yay absence); they
-// must at least run without error in dry-run.
+// yay is host-state dependent (early-returns when the helper is already installed);
+// it must at least run without error in dry-run.
 func TestPlan_NoErrorStages(t *testing.T) {
-	for _, name := range []string{"kde", "yay"} {
+	for _, name := range []string{"yay"} {
 		_ = planFor(t, Bootstrap, name)
 	}
 }

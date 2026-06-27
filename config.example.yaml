@@ -231,10 +231,11 @@ desktop:
   environment: kde               # kde | gnome | hyprland | sway | none
 
 kde:
+  # The Plasma global theme, written to kdeglobals as LookAndFeelPackage. Plasma
+  # applies it on next login (since 5.24), pulling in the theme's color scheme,
+  # cursor, icons, fonts, etc. — no running session needed. Wallpaper is not set
+  # here (it lives in the per-host appletsrc); set it manually or via dotfiles.
   look_and_feel: org.kde.breezedark.desktop
-  color_scheme: BreezeDark
-  cursor_theme: breeze_cursors
-  # wallpaper: /usr/share/wallpapers/Next/contents/images/1920x1080.png
 
 # --- dotfiles ---------------------------------------------------------------
 # The dotfiles stage (80) applies your dotfiles via a selectable manager. The

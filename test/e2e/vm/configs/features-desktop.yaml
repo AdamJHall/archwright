@@ -56,7 +56,6 @@ desktop:
 
 kde:
   look_and_feel: org.kde.breezedark.desktop
-  color_scheme: BreezeDark
 
 dotfiles:
   manager: none

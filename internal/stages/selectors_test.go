@@ -32,28 +32,27 @@ func planForCfg(t *testing.T, phase Phase, name, yamlBody string) []string {
 }
 
 func TestSelector_KDEGating(t *testing.T) {
-	// A non-kde environment makes the stage a clean no-op: no plasma-apply commands.
+	// A non-kde environment makes the stage a clean no-op: nothing is written.
 	plan := planForCfg(t, Bootstrap, "kde", `
 desktop:
   environment: gnome
 kde:
   look_and_feel: org.kde.breezedark.desktop
 `)
-	if joined := strings.Join(plan, "\n"); strings.Contains(joined, "plasma-apply") {
+	if joined := strings.Join(plan, "\n"); strings.Contains(joined, "kwriteconfig6") {
 		t.Errorf("kde stage should be a no-op when environment=gnome, got plan:\n%s", joined)
 	}
 
-	// Empty environment preserves today's behavior. The plasma tools usually aren't
-	// installed in CI, so we can't assert the apply command is *planned* — but we can
-	// assert the stage did not early-return on the selector (it ran to completion,
-	// which planForCfg already checks by erroring on failure). To positively prove the
-	// gate is keyed on the value, an explicit "kde" must behave identically to empty.
+	// Empty environment preserves today's behavior: the stage runs and selects the
+	// global theme. To prove the gate is keyed on the value, an explicit "kde" must
+	// behave identically to empty.
 	for _, env := range []string{"", "kde"} {
 		body := "kde:\n  look_and_feel: org.kde.breezedark.desktop\n"
 		if env != "" {
 			body = "desktop:\n  environment: " + env + "\n" + body
 		}
-		_ = planForCfg(t, Bootstrap, "kde", body) // must not error
+		plan := planForCfg(t, Bootstrap, "kde", body)
+		mustContain(t, plan, "kwriteconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage org.kde.breezedark.desktop")
 	}
 }
 

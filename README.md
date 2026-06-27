@@ -425,10 +425,12 @@ desktop:
 
 kde:
   look_and_feel: org.kde.breezedark.desktop
-  color_scheme: BreezeDark
-  cursor_theme: breeze_cursors
-  # wallpaper: /usr/share/wallpapers/Next/contents/images/1920x1080.png
 ```
+
+`kde.look_and_feel` is written to `kdeglobals` as `LookAndFeelPackage`. Since Plasma 5.24 that
+is enough on its own: at login Plasma applies the global theme — including its color scheme,
+cursor and icons — by regenerating the `kdedefaults` cascade, so no running session is needed.
+Wallpaper isn't set here (it lives in the per-host `appletsrc`); set it manually or via dotfiles.
 
 ### Dotfiles
 
@@ -647,7 +649,7 @@ name **or** number.
 | 40 | `aur`         | B | build/install the `aur` list via the helper |
 | 50 | `plymouth`    | B | set the boot splash theme |
 | 60 | `grub-theme`  | B | apply the GRUB theme + cmdline extras |
-| 70 | `kde`         | B | KDE look-and-feel / colours / cursor / wallpaper (no-op for other DEs) |
+| 70 | `kde`         | B | KDE global theme via `LookAndFeelPackage` in kdeglobals (no-op for other DEs) |
 | 80 | `dotfiles`    | B | apply dotfiles via the configured manager |
 | 85 | `setup`       | B | run the ordered `setup.steps` (clones/commands) |
 | 90 | `services`    | B | `systemctl enable` the `services` units so they start on the next boot |

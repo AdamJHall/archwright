@@ -2,14 +2,20 @@ package stages
 
 import (
 	"fmt"
-	"os/exec"
 
 	"github.com/AdamJHall/archwright/internal/ui"
 )
 
-// kde is the Phase B 70-kde equivalent: apply Plasma customization via the
-// plasma-apply-* helpers. These need a running Plasma session, so failures are
-// warned (not fatal) and missing tools are skipped.
+// kde is the Phase B 70-kde equivalent: select the Plasma global theme by writing
+// LookAndFeelPackage into kdeglobals. Since Plasma 5.24 this is enough on its own —
+// at login Plasma compares the configured global theme against ~/.config/kdedefaults
+// and, on a mismatch, regenerates that cascade from the theme package (pulling in its
+// color scheme, plasma theme, icons, fonts, …). So no running Plasma session is
+// required, unlike the old plasma-apply-* helpers.
+//
+// Cursor theme, color scheme and wallpaper are intentionally not handled here: the
+// first two come for free with the global theme, and wallpaper lives in the per-host
+// appletsrc (generated containment IDs) which can't be set ahead of first login.
 type kde struct{}
 
 func init() { register(kde{}) }
@@ -24,36 +30,18 @@ func (kde) Run(ctx *Context) error {
 		return nil
 	}
 
-	k := ctx.Cfg.KDE
-
-	// tool, value, optional leading flag (lookandfeel uses -a).
-	type apply struct {
-		tool, value, flag, label string
-	}
-	for _, a := range []apply{
-		{"plasma-apply-lookandfeel", k.LookAndFeel, "-a", "look & feel"},
-		{"plasma-apply-colorscheme", k.ColorScheme, "", "color scheme"},
-		{"plasma-apply-cursortheme", k.CursorTheme, "", "cursor theme"},
-		{"plasma-apply-wallpaperimage", k.Wallpaper, "", "wallpaper"},
-	} {
-		if a.value == "" {
-			continue
-		}
-		if _, err := exec.LookPath(a.tool); err != nil {
-			ui.Warn(a.tool+" not found — skipping", "what", a.label)
-			continue
-		}
-		var err error
-		if a.flag != "" {
-			err = ctx.R.Cmd(a.tool, a.flag, a.value)
-		} else {
-			err = ctx.R.Cmd(a.tool, a.value)
-		}
-		if err != nil {
-			ui.Warn(a.tool+" failed (need a running Plasma session?)", "value", a.value)
-		}
+	laf := ctx.Cfg.KDE.LookAndFeel
+	if laf == "" {
+		ui.Info("kde.look_and_feel unset — skipping KDE stage")
+		return nil
 	}
 
-	ui.OK("KDE customization applied")
+	// Write to ~/.config/kdeglobals; applied by Plasma on next login.
+	if err := ctx.R.Cmd("kwriteconfig6",
+		"--file", "kdeglobals", "--group", "KDE", "--key", "LookAndFeelPackage", laf); err != nil {
+		return err
+	}
+
+	ui.OK("KDE global theme set to %q (applies on next login)", laf)
 	return nil
 }

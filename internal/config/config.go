@@ -92,9 +92,6 @@ type Config struct {
 
 	KDE struct {
 		LookAndFeel string `yaml:"look_and_feel"`
-		ColorScheme string `yaml:"color_scheme"`
-		CursorTheme string `yaml:"cursor_theme"`
-		Wallpaper   string `yaml:"wallpaper"`
 	} `yaml:"kde"`
 
 	// Desktop selects which desktop-environment stage runs in Phase B. Empty (the
