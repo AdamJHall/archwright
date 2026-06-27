@@ -32,7 +32,7 @@ disks:
     pvs: [/dev/nvme0n1p3, /dev/sda]
 mirrors:
   reflector: true
-  countries: [GB, DE]
+  countries: [AU]
   latest: 20
   sort: rate
   protocols: [https]

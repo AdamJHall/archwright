@@ -33,7 +33,7 @@ disks:
 # reflector runs in Phase A before pacstrap.
 mirrors:
   reflector: true
-  countries: [US]
+  countries: [AU]
   latest: 5
   protocols: [https]
 

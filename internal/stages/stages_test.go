@@ -37,7 +37,7 @@ disks:
     pvs: [/dev/nvme0n1p2, /dev/sda, /dev/sdb]
 mirrors:
   reflector: true
-  countries: [GB, DE]
+  countries: [AU]
   latest: 20
   sort: rate
   protocols: [https]
@@ -156,7 +156,7 @@ func TestPlan_Archinstall(t *testing.T) {
 	plan := planFor(t, Install, "archinstall")
 	mustContain(t, plan,
 		// reflector picks mirrors before pacstrap
-		"reflector --country GB,DE --latest 20 --sort rate --protocol https --save /etc/pacman.d/mirrorlist",
+		"reflector --country AU --latest 20 --sort rate --protocol https --save /etc/pacman.d/mirrorlist",
 		// delegates the install to archinstall with our generated files
 		"archinstall --config "+aiConfigPath+" --creds "+aiCredsPath+" --silent",
 		// remounts target + ESP for the chroot post-install work
