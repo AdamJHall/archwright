@@ -209,6 +209,11 @@ func TestValidate_Errors(t *testing.T) {
 			want: []string{"grub.theme.source must be one of: vinceliuice url none"},
 		},
 		{
+			name: "bad grub theme screen",
+			yaml: strings.Replace(validYAML, "name: tela", "name: tela\n    screen: 8k", 1),
+			want: []string{"grub.theme.screen must be one of: 1080p 2k 4k ultrawide ultrawide2k"},
+		},
+		{
 			name: "non-/dev PV is rejected by dive rule",
 			yaml: strings.Replace(validYAML, "pvs: [/dev/nvme0n1p3, /dev/sda]", "pvs: [/dev/nvme0n1p3, sda]", 1),
 			want: []string{`disks.lvm.pvs[1] must start with "/dev/"`},

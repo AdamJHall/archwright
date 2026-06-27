@@ -87,6 +87,11 @@ type Config struct {
 			Source string `yaml:"source" validate:"omitempty,oneof=vinceliuice url none"`
 			Name   string `yaml:"name"`
 			URL    string `yaml:"url" validate:"omitempty,url"`
+			// Screen and Background apply to source 'vinceliuice' only (passed to its
+			// install.sh). Background is a local path or http(s) URL to a background
+			// image, dropped into the installer checkout as background.jpg.
+			Screen     string `yaml:"screen" validate:"omitempty,oneof=1080p 2k 4k ultrawide ultrawide2k"`
+			Background string `yaml:"background"`
 		} `yaml:"theme"`
 	} `yaml:"grub"`
 

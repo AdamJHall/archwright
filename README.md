@@ -410,8 +410,17 @@ grub:
   theme:
     source: vinceliuice          # vinceliuice | url | none
     name: tela                   # vinceliuice theme: tela|stylish|vimix|whitesur|slaze
+    # screen: 4k                 # vinceliuice only: 1080p|2k|4k|ultrawide|ultrawide2k
+    # background: https://raw.githubusercontent.com/you/dotfiles/main/background.jpg
     # url: https://example.com/theme.tar.gz   # used when source: url
 ```
+
+For `source: vinceliuice`, `screen` maps to the installer's `-s` flag and `background` supplies a
+custom image (the installer uses a `background.jpg` in its checkout). `background` may be a local
+path or an `http(s)` URL. **Heads-up on ordering:** the `grub-theme` stage (60) runs *before*
+`dotfiles` (80), so a local path must already exist on disk at that point — to use an image you keep
+in your dotfiles repo, point `background` at its **raw URL** instead, which fetches independently of
+stage order.
 
 ### `desktop` & `kde`
 

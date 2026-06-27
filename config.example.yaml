@@ -221,6 +221,11 @@ grub:
   theme:
     source: vinceliuice          # vinceliuice | url | none
     name: tela                   # vinceliuice theme name (tela|stylish|vimix|whitesur|slaze)
+    # screen: 4k                 # vinceliuice only: 1080p|2k|4k|ultrawide|ultrawide2k (default 1080p)
+    # background: https://raw.githubusercontent.com/you/dotfiles/main/background.jpg
+    #                            # vinceliuice only: local path or http(s) URL to a custom
+    #                            # background image. A raw URL is order-safe; a local path
+    #                            # must already exist when stage 60 runs (before dotfiles).
     # url: https://example.com/theme.tar.gz   # used when source: url
 
 # --- desktop ----------------------------------------------------------------

@@ -2,6 +2,7 @@ package stages
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/AdamJHall/archwright/internal/ui"
 )
@@ -30,9 +31,24 @@ func (grubtheme) Run(ctx *Context) error {
 		// Clone + run the upstream installer (it sets GRUB_THEME and regenerates).
 		// cloneBuild runs as the user (it mktemp/git-clones into the user's tree),
 		// so install.sh keeps its inner `sudo` to gain root for the system writes.
+		install := fmt.Sprintf("sudo ./install.sh -t %s", t.Name)
+		if t.Screen != "" {
+			install += " -s " + t.Screen
+		}
+		// install.sh uses a file named background.jpg in the checkout root as the
+		// background, if present. Fetch (URL) or copy (local path) it into place
+		// before running the installer; cloneBuild runs us from the checkout root.
+		if t.Background != "" {
+			var fetch string
+			if strings.HasPrefix(t.Background, "http://") || strings.HasPrefix(t.Background, "https://") {
+				fetch = fmt.Sprintf("curl -fsSL %q -o background.jpg", t.Background)
+			} else {
+				fetch = fmt.Sprintf("cp -f %q background.jpg", t.Background)
+			}
+			install = fetch + " && " + install
+		}
 		if err := cloneBuild(ctx,
-			"--depth 1 https://github.com/vinceliuice/grub2-themes",
-			fmt.Sprintf("sudo ./install.sh -t %s", t.Name)); err != nil {
+			"--depth 1 https://github.com/vinceliuice/grub2-themes", install); err != nil {
 			return err
 		}
 		ui.OK("GRUB theme %q installed", t.Name)
