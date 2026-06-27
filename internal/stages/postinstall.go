@@ -69,6 +69,16 @@ func pacmanConfEntry(r config.Repo) string {
 		r.Name, block,
 	)
 }
+
+// configureUserShell sets the user's login shell in the target via chsh. archinstall
+// always creates users with the default /bin/bash; this applies cfg.user.shell so the
+// installed system boots with e.g. zsh as the login shell on first login. The shell
+// binary must be in the pacstrap set (e.g. zsh) so it already exists — and is listed in
+// /etc/shells — at chsh time.
+func configureUserShell(ctx *Context, user, shell string) error {
+	return chrootCmd(ctx, "chsh", "-s", shell, user)
+}
+
 // enableMultilib uncomments the [multilib] repository section in the target's
 // /etc/pacman.conf (Arch ships it commented out) so 32-bit packages like steam resolve
 // in Phase B, then syncs the new database. The sed range strips the leading '#' from the

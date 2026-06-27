@@ -164,6 +164,13 @@ func postInstall(ctx *Context) error {
 			return err
 		}
 	}
+
+	if ctx.Cfg.User.Shell != "" {
+		if err := configureUserShell(ctx, ctx.Cfg.User.Name, ctx.Cfg.User.Shell); err != nil {
+			return err
+		}
+	}
+
 	if ctx.Cfg.Pacman.Multilib {
 		if err := enableMultilib(ctx); err != nil {
 			return err
