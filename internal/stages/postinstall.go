@@ -69,6 +69,18 @@ func pacmanConfEntry(r config.Repo) string {
 		r.Name, block,
 	)
 }
+// enableMultilib uncomments the [multilib] repository section in the target's
+// /etc/pacman.conf (Arch ships it commented out) so 32-bit packages like steam resolve
+// in Phase B, then syncs the new database. The sed range strips the leading '#' from the
+// `[multilib]` header line and its following `Include` line. It is idempotent: an
+// already-enabled section has no leading '#' on the header, so the range never matches.
+func enableMultilib(ctx *Context) error {
+	const uncomment = `sed -i '/^#\[multilib\]/,/^#Include/ s/^#//' /etc/pacman.conf`
+	if err := chrootShell(ctx, uncomment); err != nil {
+		return err
+	}
+	return chrootCmd(ctx, "pacman", "-Sy")
+}
 
 // configureLocales enables additional locales in the target's /etc/locale.gen
 // and regenerates them. archinstall already enables + generates the default

@@ -70,6 +70,13 @@ type Config struct {
 	// defaults to "yay" (today's behavior); "paru" is argument-compatible.
 	AurHelper string `yaml:"aur_helper" validate:"omitempty,oneof=yay paru"`
 
+	// Pacman holds target pacman.conf tweaks applied in Phase A's chroot. Multilib
+	// uncomments the [multilib] repository (Arch ships it commented) so 32-bit
+	// packages like steam resolve in Phase B. Unset preserves today's behavior.
+	Pacman struct {
+		Multilib bool `yaml:"multilib"`
+	} `yaml:"pacman"`
+
 	Plymouth struct {
 		Theme string `yaml:"theme"`
 	} `yaml:"plymouth"`

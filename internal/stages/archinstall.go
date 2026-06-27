@@ -164,6 +164,11 @@ func postInstall(ctx *Context) error {
 			return err
 		}
 	}
+	if ctx.Cfg.Pacman.Multilib {
+		if err := enableMultilib(ctx); err != nil {
+			return err
+		}
+	}
 
 	if len(ctx.Cfg.Repos) > 0 {
 		if err := configureRepos(ctx, ctx.Cfg.Repos); err != nil {
