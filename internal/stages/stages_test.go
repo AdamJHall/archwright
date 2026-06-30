@@ -63,7 +63,6 @@ aur: [1password, 1password-cli]
 plymouth:
   theme: bgrt
 grub:
-  cmdline_extra: "quiet splash"
   theme:
     source: vinceliuice
     name: tela
@@ -148,8 +147,8 @@ func TestRegistry(t *testing.T) {
 		[]string{"preflight", "archinstall"},
 		[]int{0, 10})
 	check(Bootstrap,
-		[]string{"yay", "packages", "snapper", "flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup", "services"},
-		[]int{10, 20, 25, 30, 40, 50, 60, 70, 80, 85, 90})
+		[]string{"yay", "packages", "snapper", "flatpak", "aur", "grub-theme", "kde", "dotfiles", "setup", "services"},
+		[]int{10, 20, 25, 30, 40, 60, 70, 80, 85, 90})
 }
 
 func TestPlan_Archinstall(t *testing.T) {
@@ -210,13 +209,6 @@ func TestPlan_Flatpak(t *testing.T) {
 	mustContain(t, planFor(t, Bootstrap, "flatpak"),
 		"flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
 		"flatpak --user install -y --noninteractive flathub com.spotify.Client",
-	)
-}
-
-func TestPlan_Plymouth(t *testing.T) {
-	mustContain(t, planFor(t, Bootstrap, "plymouth"),
-		"plymouth-set-default-theme -R bgrt",
-		"grub-mkconfig -o /boot/grub/grub.cfg",
 	)
 }
 

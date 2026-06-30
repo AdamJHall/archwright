@@ -37,7 +37,7 @@ import (
 )
 
 // Version is the archinstall release this schema was modelled against.
-const Version = "4.3"
+const Version = "4.4"
 
 // newObjID generates the unique obj_id values archinstall uses to cross-reference
 // partitions from lvm_pvs. It is a package var solely so golden render tests can
@@ -167,10 +167,19 @@ type DiskConfig struct {
 // (args.py BootloaderConfiguration). It replaces the deprecated bare
 // `bootloader: "Grub"` string. Bootloader is one of "Grub", "Systemd-boot",
 // "Efistub", "Limine", "Refind", "No bootloader"; uki/removable default false.
+//
+// Plymouth, added in archinstall 4.4, is one of archinstall's built-in
+// PlymouthTheme values (e.g. "spinner", "bgrt"). When set, archinstall installs
+// plymouth, inserts the initramfs hook, appends "quiet splash" to the kernel
+// cmdline, runs plymouth-set-default-theme and regenerates the initramfs — all in
+// Phase A. omitempty keeps the unconfigured render byte-identical to before, and a
+// non-built-in value is rejected (archinstall sys.exit(1)s on unknown themes, so
+// config validation restricts Plymouth.Theme to the same built-in set).
 type BootloaderConfig struct {
 	Bootloader string `json:"bootloader"`
 	UKI        bool   `json:"uki"`
 	Removable  bool   `json:"removable"`
+	Plymouth   string `json:"plymouth,omitempty"`
 }
 
 // archBootloader maps our config bootloader kind ("grub"/"systemd-boot") to
@@ -293,7 +302,7 @@ func Build(cfg *config.Config, geom Geometry, password string) (*Config, *Creds,
 	pkgs := append([]string(nil), cfg.Pacstrap...)
 	c := &Config{
 		Lang:             "English",
-		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false},
+		BootloaderConfig: BootloaderConfig{Bootloader: archBootloader(cfg.Bootloader.EffectiveKind()), UKI: false, Removable: false, Plymouth: cfg.Plymouth.Theme},
 		Kernels:          kernelBase(cfg),
 		Hostname:         cfg.System.Hostname,
 		Packages:         pkgs,

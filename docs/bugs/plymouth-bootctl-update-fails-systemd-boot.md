@@ -1,6 +1,11 @@
 # Bug: Phase B `regenerateBootConfig` runs `bootctl update` on systemd-boot and fails, aborting bootstrap (via the always-on plymouth stage)
 
-**Status:** open — found by the automated VM e2e harness (`test/e2e/vm/`, descriptor `sdboot-lvm`), 2026-06-23
+**Status:** resolved 2026-06-30 — Plymouth moved to archinstall (Phase A) on the 4.4 bump.
+The Phase B `plymouth` stage, `regenerateBootConfig`/`ensureKernelParam` helpers, and the
+`bootctl update --graceful` workaround described below were all removed; archinstall now installs
+and configures Plymouth (hook, `quiet splash`, theme) during the install, so no Phase B step ever
+runs `bootctl update`. The failure path no longer exists. (Originally found by the automated VM e2e
+harness `test/e2e/vm/`, descriptor `sdboot-lvm`, 2026-06-23.)
 **Area:** `internal/stages/helpers.go` (`regenerateBootConfig`); surfaced via `internal/stages/plymouth.go`
 **Severity:** high — Phase B `bootstrap` **fails on any systemd-boot system** at the plymouth
 stage (and any other stage that regenerates boot config), even with a default config.

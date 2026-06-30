@@ -213,11 +213,14 @@ bootloader:
   kind: grub                     # grub | systemd-boot
 
 # --- boot splash / theming --------------------------------------------------
+# Plymouth is installed and configured by archinstall in Phase A: it adds the
+# initramfs hook, appends "quiet splash" to the kernel cmdline and sets the theme.
+# theme must be one of archinstall's built-in themes (custom themes unsupported):
+#   bgrt | fade-in | glow | script | solar | spinner | spinfinity | tribar | text | details
 plymouth:
-  theme: spinner                    # name passed to plymouth-set-default-theme
+  theme: spinner
 
 grub:
-  cmdline_extra: "quiet splash"  # appended to GRUB_CMDLINE_LINUX_DEFAULT
   theme:
     source: vinceliuice          # vinceliuice | url | none
     name: tela                   # vinceliuice theme name (tela|stylish|vimix|whitesur|slaze)

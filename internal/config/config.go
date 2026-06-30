@@ -77,13 +77,17 @@ type Config struct {
 		Multilib bool `yaml:"multilib"`
 	} `yaml:"pacman"`
 
+	// Plymouth selects the boot splash theme. Theme must be one of archinstall's
+	// built-in PlymouthTheme values: archinstall installs and configures plymouth
+	// in Phase A (it appends "quiet splash" to the kernel cmdline itself), and it
+	// sys.exit(1)s on a theme outside this set, so the enum is enforced here too.
+	// Custom (non-built-in) themes are unsupported by this path. Empty = no splash.
 	Plymouth struct {
-		Theme string `yaml:"theme"`
+		Theme string `yaml:"theme" validate:"omitempty,oneof=bgrt fade-in glow script solar spinner spinfinity tribar text details"`
 	} `yaml:"plymouth"`
 
 	GRUB struct {
-		CmdlineExtra string `yaml:"cmdline_extra"`
-		Theme        struct {
+		Theme struct {
 			Source string `yaml:"source" validate:"omitempty,oneof=vinceliuice url none"`
 			Name   string `yaml:"name"`
 			URL    string `yaml:"url" validate:"omitempty,url"`

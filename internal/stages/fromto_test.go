@@ -27,12 +27,12 @@ func TestWithin(t *testing.T) {
 		{
 			name: "from only by name is inclusive lower bound",
 			from: "flatpak", to: "",
-			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup", "services"},
+			want: []string{"flatpak", "aur", "grub-theme", "kde", "dotfiles", "setup", "services"},
 		},
 		{
 			name: "from only by number resolves same as name",
 			from: "30", to: "",
-			want: []string{"flatpak", "aur", "plymouth", "grub-theme", "kde", "dotfiles", "setup", "services"},
+			want: []string{"flatpak", "aur", "grub-theme", "kde", "dotfiles", "setup", "services"},
 		},
 		{
 			name: "to only by name is inclusive upper bound",
@@ -46,13 +46,13 @@ func TestWithin(t *testing.T) {
 		},
 		{
 			name: "both bounds inclusive on each end",
-			from: "packages", to: "plymouth",
-			want: []string{"packages", "snapper", "flatpak", "aur", "plymouth"},
+			from: "packages", to: "aur",
+			want: []string{"packages", "snapper", "flatpak", "aur"},
 		},
 		{
 			name: "both bounds mixing name and number",
 			from: "20", to: "kde",
-			want: []string{"packages", "snapper", "flatpak", "aur", "plymouth", "grub-theme", "kde"},
+			want: []string{"packages", "snapper", "flatpak", "aur", "grub-theme", "kde"},
 		},
 		{
 			name: "single-stage window when from equals to",
@@ -61,7 +61,7 @@ func TestWithin(t *testing.T) {
 		},
 		{
 			name:    "inverted bounds is an error",
-			from:    "plymouth",
+			from:    "aur",
 			to:      "packages",
 			wantErr: "from",
 		},
@@ -105,12 +105,12 @@ func TestWithin(t *testing.T) {
 // TestWithin_ComposesWithSkip confirms the filter operates on whatever Select
 // already produced: a skipped stage stays absent even when inside the window.
 func TestWithin_ComposesWithSkip(t *testing.T) {
-	in := Select(Bootstrap, "", []string{"aur"}, nil)
-	got, err := Within(in, "packages", "plymouth")
+	in := Select(Bootstrap, "", []string{"snapper"}, nil)
+	got, err := Within(in, "packages", "aur")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := []string{"packages", "snapper", "flatpak", "plymouth"} // aur removed by --skip
+	want := []string{"packages", "flatpak", "aur"} // snapper removed by --skip
 	if g := names(got); !equalStrings(g, want) {
 		t.Fatalf("Within over skipped input = %v, want %v", g, want)
 	}
@@ -118,7 +118,7 @@ func TestWithin_ComposesWithSkip(t *testing.T) {
 
 // TestWithin_EmptyInput is a no-op pass-through, never a panic.
 func TestWithin_EmptyInput(t *testing.T) {
-	got, err := Within(nil, "packages", "plymouth")
+	got, err := Within(nil, "packages", "aur")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
