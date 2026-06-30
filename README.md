@@ -403,10 +403,9 @@ bootloader:
 
 ```yaml
 plymouth:
-  theme: spinner                 # passed to plymouth-set-default-theme
+  theme: spinner                 # a built-in archinstall theme (see below)
 
 grub:
-  cmdline_extra: "quiet splash"  # appended to GRUB_CMDLINE_LINUX_DEFAULT
   theme:
     source: vinceliuice          # vinceliuice | url | none
     name: tela                   # vinceliuice theme: tela|stylish|vimix|whitesur|slaze
@@ -414,6 +413,13 @@ grub:
     # background: https://raw.githubusercontent.com/you/dotfiles/main/background.jpg
     # url: https://example.com/theme.tar.gz   # used when source: url
 ```
+
+Plymouth is installed and configured by **archinstall in Phase A**: it adds the initramfs hook,
+appends `quiet splash` to the kernel cmdline, sets the theme and regenerates the initramfs. `theme`
+must be one of archinstall's built-in themes — `bgrt`, `fade-in`, `glow`, `script`, `solar`,
+`spinner`, `spinfinity`, `tribar`, `text`, `details` — because archinstall aborts the install on an
+unknown value; **custom Plymouth themes are not supported** via this path. Leave `plymouth` unset for
+no boot splash.
 
 For `source: vinceliuice`, `screen` maps to the installer's `-s` flag and `background` supplies a
 custom image (the installer uses a `background.jpg` in its checkout). `background` may be a local
@@ -650,14 +656,13 @@ name **or** number.
 | # | Stage | Phase | What it does |
 |---|-------|-------|--------------|
 | 0  | `preflight`   | A | UEFI + config + archinstall version checks (warns, doesn't block) |
-| 10 | `archinstall` | A | reflector → probe geometry → render JSON → `archinstall --silent` → chroot: repos + kernels → stage the binary for Phase B |
+| 10 | `archinstall` | A | reflector → probe geometry → render JSON (incl. `plymouth` boot splash) → `archinstall --silent` → chroot: repos + kernels → stage the binary for Phase B |
 | 10 | `yay`         | B | install the AUR helper (`aur_helper`) |
 | 20 | `packages`    | B | `pacman -S --needed` the official/custom-repo packages |
 | 25 | `snapper`     | B | provision Snapper (only when btrfs + `snapshots: snapper`) |
 | 30 | `flatpak`     | B | register `flatpak_remotes`, install `flatpaks` |
 | 40 | `aur`         | B | build/install the `aur` list via the helper |
-| 50 | `plymouth`    | B | set the boot splash theme |
-| 60 | `grub-theme`  | B | apply the GRUB theme + cmdline extras |
+| 60 | `grub-theme`  | B | apply the GRUB theme |
 | 70 | `kde`         | B | KDE global theme via `LookAndFeelPackage` in kdeglobals (no-op for other DEs) |
 | 80 | `dotfiles`    | B | apply dotfiles via the configured manager |
 | 85 | `setup`       | B | run the ordered `setup.steps` (clones/commands) |

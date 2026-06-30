@@ -68,7 +68,8 @@ Each shape was reverse-engineered; the harness has now exercised them all.
 | Snapper | timer-unit + `set-config` key names | ✅ confirmed — `btrfs-snapper` installs snapper + green |
 | Btrfs | subvolume JSON `{name, mountpoint}` | ❌ **bug** — shape parses, but archinstall installs to the **top-level** subvolume; the configured `@` is created but unused as root → [`btrfs-subvolume-not-used-as-root.md`](bugs/btrfs-subvolume-not-used-as-root.md) |
 | LVM | multi-volume "rest of VG" sizing (fixed root + remainder `/home`) | ❌ **bug** — the PV partition renders with an empty `fs_type`; archinstall aborts Phase A before sizing is reached → [`lvm-multivolume-pv-fstype-empty.md`](bugs/lvm-multivolume-pv-fstype-empty.md) |
-| systemd-boot | loader-entry default + `bootctl update` cmdline-refresh path | ⚠️ install + boot **work**; the Phase-B `bootctl update` refresh path **fails** (nonzero when already current), reached via the always-on plymouth stage → [`plymouth-bootctl-update-fails-systemd-boot.md`](bugs/plymouth-bootctl-update-fails-systemd-boot.md) |
+| systemd-boot | loader-entry default | ⚠️ install + boot **work**. The Phase-B `bootctl update` refresh path that previously failed is **gone**: the always-on plymouth stage that triggered it was removed when Plymouth moved to archinstall (Phase A) — see [`plymouth-bootctl-update-fails-systemd-boot.md`](bugs/plymouth-bootctl-update-fails-systemd-boot.md) (resolved). |
+| Plymouth | `bootloader_config.plymouth` (archinstall 4.4 built-in theme) | ⚠️ **not yet VM-validated** — archinstall installs/configures the splash in Phase A; confirm the `spinner` theme is set and quiet/splash reach the kernel cmdline on a real run. |
 
 (A fourth bug unrelated to a disk shape — the flatpak stage hangs on a polkit prompt — is in
 [`flatpak-system-remote-add-polkit-hang.md`](bugs/flatpak-system-remote-add-polkit-hang.md).)

@@ -70,3 +70,22 @@ func TestBuild_BootloaderSystemdBoot(t *testing.T) {
 		t.Errorf("systemd-boot bootloader = %q, want %q", got, "Systemd-boot")
 	}
 }
+
+// A configured plymouth theme is rendered into bootloader_config.plymouth so
+// archinstall installs and configures the splash in Phase A (replacing the old
+// Phase B plymouth stage). The theme string passes through verbatim.
+func TestBuild_PlymouthThemeRendered(t *testing.T) {
+	out := buildForBootloader(t, "plymouth:\n  theme: spinner\n")
+	if got := out.BootloaderConfig.Plymouth; got != "spinner" {
+		t.Errorf("plymouth theme = %q, want %q", got, "spinner")
+	}
+}
+
+// With no plymouth theme the field is omitted (omitempty), keeping the rendered
+// bootloader_config byte-identical to the pre-4.4 output the golden files assert.
+func TestBuild_PlymouthOmittedWhenUnset(t *testing.T) {
+	out := buildForBootloader(t, "")
+	if got := out.BootloaderConfig.Plymouth; got != "" {
+		t.Errorf("plymouth theme = %q, want empty", got)
+	}
+}

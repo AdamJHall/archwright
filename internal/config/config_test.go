@@ -53,7 +53,6 @@ aur: [1password]
 plymouth:
   theme: bgrt
 grub:
-  cmdline_extra: "quiet splash"
   theme:
     source: vinceliuice
     name: tela
@@ -202,6 +201,11 @@ func TestValidate_Errors(t *testing.T) {
 			name: "empty pvs list",
 			yaml: strings.Replace(validYAML, "pvs: [/dev/nvme0n1p3, /dev/sda]", "pvs: []", 1),
 			want: []string{"disks.lvm.pvs must have at least 1 item(s)"},
+		},
+		{
+			name: "non-built-in plymouth theme",
+			yaml: strings.Replace(validYAML, "theme: bgrt", "theme: my-custom-theme", 1),
+			want: []string{"plymouth.theme must be one of: bgrt fade-in glow script solar spinner spinfinity tribar text details"},
 		},
 		{
 			name: "bad grub theme source",
